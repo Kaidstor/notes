@@ -1,0 +1,126 @@
+# notes
+
+Хостинг заметок: markdown приезжает по HTTP, рендерится в вёрстку в стиле приложения
+sql-kai и живёт по адресу `{домен}/{uuid}`. Индекс с полнотекстовым поиском — под
+basic-auth, сами страницы заметок публичны по ссылке.
+
+Стек: **Bun + Hono** (сервер, SSR страниц), **React + Tailwind v4** (индекс и поиск),
+**SQLite** (`bun:sqlite`).
+
+## Локально
+
+```bash
+bun install
+bun run build          # tsc --noEmit + vite build → dist/web, bun build → dist/server.js
+bun run seed           # три демо-заметки
+bun run start          # http://localhost:3000 (из исходников)
+bun dist/server.js     # то же, но из бандла — так же, как в контейнере
+```
+
+`bun run dev` поднимает vite (5173) и сервер (3000) с watch: фронт ходит в API через прокси.
+
+Без `NOTES_USER`/`NOTES_PASSWORD` индекс открыт, без `NOTES_PUBLISH_TOKEN` публикация
+без токена — это только для локальной разработки. При `NODE_ENV=production` сервер
+не стартует, пока все три переменные не заданы.
+
+## API
+
+| Метод | Путь | Доступ | Что делает |
+| --- | --- | --- | --- |
+| `GET` | `/` | basic | SPA: список и поиск |
+| `GET` | `/api/notes?q=` | basic | Поиск по заголовку, тегам и тексту |
+| `POST` | `/api/notes` | bearer | Публикация/обновление: `{markdown, title?, uuid?, tags?}` |
+| `DELETE` | `/api/notes/:uuid` | bearer | Удаление |
+| `GET` | `/{uuid}` | публично | Страница заметки |
+| `GET` | `/{uuid}/raw` | публично | Исходный markdown |
+| `GET` | `/healthz` | публично | Живость + число заметок |
+
+Заголовок берётся из frontmatter (`title:`), иначе из первого `# H1` — H1 при этом
+убирается из тела, его рисует шапка страницы. `uuid:` во frontmatter делает повторную
+публикацию обновлением той же страницы.
+
+Теги индексируются вместе с текстом, поэтому сервисные заметки помечаются именем
+сервиса (`hidden-domains`, `whois`) и находятся запросом по этому имени. `/{uuid}/raw`
+отдаёт исходный markdown без авторизации — это то, чем читает опубликованное агент.
+
+## Что доступно в markdown
+
+GFM (таблицы, списки, код) плюс **сырые HTML-блоки** — рендерер пропускает их как есть.
+Готовые классы под вставку: `.note`, `.warn`, `.ok` (цветные врезки), `.cards` + `.card`
+(сетка карточек), `kbd`. Тема страницы следует системной (`prefers-color-scheme`).
+
+## Деплой на my-vpn
+
+```bash
+./deploy.sh              # DNS → сборка образа здесь → доставка → up → healthcheck
+./deploy.sh --skip-dns   # не трогать Timeweb
+./deploy.sh --logs       # плюс docker logs после деплоя
+```
+
+**Исходный код на сервер не попадает.** Туда уезжают только `compose.yml`, `.env` и
+docker-образ, внутри которого лежит один `dist`: бандл сервера (`bun build --minify`,
+85 КБ) и собранный фронт. Ни `src`, ни `node_modules` — из контейнера нечего вытащить
+через `docker cp`. `deploy.sh` проверяет это перед отправкой и падает, если в образе
+вдруг оказались исходники.
+
+Что делает скрипт:
+
+1. **DNS** — заводит в Timeweb поддомен `notes` и A-запись на `82.97.248.187`, если их нет.
+   Чужие записи не трогает: при несовпадении IP только предупреждает. Токен берётся из
+   `home-kai/TIMEWEB_TOKEN` и уходит в curl через stdin-конфиг, не через argv.
+2. **Сборка** — `docker build --platform linux/amd64`, теги `latest` и `ГГГГММДД_ЧЧММСС`,
+   плюс проверка на отсутствие исходников в образе.
+3. **Конфиг** — `compose.yml` и `.env` из `sec export notes` ([sec](https://github.com/Kaidstor/sec) — локальный менеджер секретов; временный файл 0600,
+   удаляется по выходу из функции).
+4. **Образ** — `docker save` → `rsync -z` (дельтой к прошлому архиву: реально передаются
+   килобайты) → `docker load` → `docker compose up -d` → архив на сервере удаляется.
+5. **Откат** — на сервере остаются три последних тега: `docker tag notes:<версия> notes:latest
+   && docker compose up -d` возвращает предыдущую версию.
+6. **Проверка** — статус контейнера и опрос `https://notes.kaidstor.ru/healthz`
+   (до минуты, пока Let's Encrypt выдаёт сертификат).
+
+Замеры на этом проекте: сборка под amd64 ~35–45 с (эмуляция на arm64-маке), передача
+дельты 3 с, `load` + рестарт ~1 с.
+
+Роутинг описан labels'ами в `compose.yml` — traefik берёт их через docker-провайдер
+(`exposedByDefault: false`, сеть `vpn`). Общий `/app/traefik/dynamic.yml`, от которого
+зависят остальные сайты, деплой не редактирует.
+
+## Скилл publish-note
+
+В репозитории есть скилл `publish-note` ([skills/publish-note/SKILL.md](skills/publish-note/SKILL.md))
+по спецификации [Agent Skills](https://agentskills.io) — инструкции агенту, как публиковать
+markdown на этот сервис: сборка заметки, теги, `--pin` для обновляемых страниц, чтение
+опубликованного через `/{uuid}/raw`.
+
+Установка (CLI сам спросит, в какого агента и куда — в проект или глобально):
+
+```bash
+npx skills add https://github.com/Kaidstor/notes --skill publish-note
+```
+
+Или руками — скилл это просто папка:
+
+```bash
+cp -R skills/publish-note ~/.claude/skills/
+```
+
+### Настройка
+
+`scripts/publish.ts` читает креды **только из окружения** — токен не передаётся аргументами
+и не попадает в argv/историю:
+
+| Переменная | Зачем |
+| --- | --- |
+| `NOTES_PUBLISH_TOKEN` | публикация и удаление |
+| `NOTES_USER` / `NOTES_PASSWORD` | только для `--list` |
+
+Скилл рассчитан на запуск через [sec](https://github.com/Kaidstor/sec) с проектом `notes`,
+но подойдёт любой способ доставить переменные в окружение:
+
+```bash
+sec run notes -- bun ~/.claude/skills/publish-note/scripts/publish.ts docs/note.md --pin
+```
+
+Адрес сервиса по умолчанию — `https://notes.kaidstor.ru` (`DEFAULT_HOST` в publish.ts);
+свой инстанс — флагом `--host <url>`.

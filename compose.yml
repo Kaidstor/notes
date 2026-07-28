@@ -1,0 +1,31 @@
+services:
+  notes:
+    # Образ приезжает готовым (deploy.sh: build → save → load), исходников на
+    # сервере нет — build-контекста здесь быть не должно.
+    image: notes:latest
+    container_name: notes
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      NOTES_DB: /data/notes.db
+      NOTES_SITE_NAME: notes.kaidstor.ru
+      NOTES_PUBLIC_URL: https://notes.kaidstor.ru
+    volumes:
+      - ./data:/data
+    networks:
+      - vpn
+    # Роутинг через docker-провайдер traefik (он включён с exposedByDefault: false),
+    # а не через общий /app/traefik/dynamic.yml — деплой не трогает файл, от которого
+    # зависят все остальные сайты.
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=vpn
+      - traefik.http.routers.notes.rule=Host(`notes.kaidstor.ru`)
+      - traefik.http.routers.notes.entrypoints=websecure
+      - traefik.http.routers.notes.tls.certresolver=myresolver
+      - traefik.http.services.notes.loadbalancer.server.port=3000
+
+networks:
+  vpn:
+    external: true
