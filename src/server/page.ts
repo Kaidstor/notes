@@ -24,6 +24,7 @@ const CSS = `
   --emerald: #34d399;
   --violet: #a78bfa;
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --page: 990px;
 }
 @media (prefers-color-scheme: light) {
   :root {
@@ -61,7 +62,7 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .topbar-inner {
-  max-width: 1120px; margin: 0 auto; padding: 10px 24px;
+  max-width: var(--page); margin: 0 auto; padding: 10px 24px;
   display: flex; align-items: center; gap: 10px;
   font-size: 12px;
 }
@@ -76,7 +77,7 @@ body {
 }
 a.chip:hover { border-color: var(--border-strong); color: var(--fg-strong); }
 .wrap {
-  max-width: 1120px; margin: 0 auto; padding: 40px 24px 96px;
+  max-width: var(--page); margin: 0 auto; padding: 40px 24px 96px;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px;
 }
 @media (min-width: 1080px) { .wrap { grid-template-columns: minmax(0, 1fr) 200px; } }
@@ -151,7 +152,7 @@ pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
 @media (prefers-reduced-motion: reduce) { .pz-stage { transition: none !important; } }
 /* Страница со схемами шире обычной: колонка текста остаётся комфортной, а
    диаграмме достаётся место, которое иначе пустует по краям. */
-body.diagrams .wrap { max-width: 1500px; }
+body.diagrams { --page: 1320px; }
 
 /* Врезка открывается вписанной, но её можно двигать и приближать на месте. */
 .mermaid-wrap { position: relative; }
@@ -247,7 +248,7 @@ nav.toc { display: none; }
   html { scroll-behavior: smooth; }
 }
 footer.doc {
-  max-width: 1120px; margin: 0 auto; padding: 20px 24px 48px;
+  max-width: var(--page); margin: 0 auto; padding: 20px 24px 48px;
   border-top: 1px solid var(--border); color: var(--dim);
   font-size: 11px; font-family: var(--mono);
   display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
