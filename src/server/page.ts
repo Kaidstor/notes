@@ -133,27 +133,39 @@ pre.mermaid {
   line-height: 1.5; color: var(--dim); overflow-x: auto;
 }
 pre.mermaid[data-processed] {
-  color: inherit; overflow: hidden; cursor: zoom-in;
-  aspect-ratio: 16 / 10; display: grid; place-items: center;
-  padding: 12px; background: var(--panel);
+  color: inherit; padding: 0; position: relative; overflow: hidden;
+  aspect-ratio: 16 / 10; background: var(--panel);
   border: 1px solid var(--border); border-radius: 8px;
 }
 pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
-/* Вписываем и по высоте тоже: иначе высокая схема растягивает страницу на экраны. */
-pre.mermaid svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+
+/* Общая площадка pan/zoom: и во врезке, и в просмотрщике. Схему двигают мышью,
+   поэтому выделение текста тут только мешает. */
+.pz {
+  position: absolute; inset: 0; overflow: hidden; cursor: grab;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+.pz.grabbing { cursor: grabbing; }
+.pz-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.pz-stage svg { display: block; max-width: none; }
+@media (prefers-reduced-motion: reduce) { .pz-stage { transition: none !important; } }
 /* Страница со схемами шире обычной: колонка текста остаётся комфортной, а
    диаграмме достаётся место, которое иначе пустует по краям. */
 body.diagrams .wrap { max-width: 1500px; }
 
-/* Врезка вписана по ширине — разглядывать схему идут в полноэкранный просмотр. */
+/* Врезка открывается вписанной, но её можно двигать и приближать на месте. */
 .mermaid-wrap { position: relative; }
-.mermaid-zoom {
-  position: absolute; top: 8px; right: 8px; opacity: 0.5; transition: opacity 0.12s;
+.pz-btn {
   border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
-  border-radius: 6px; padding: 3px 8px; font-size: 12px; line-height: 1.3; cursor: pointer;
+  border-radius: 6px; padding: 3px 9px; font: inherit; font-size: 12px;
+  line-height: 1.3; cursor: pointer;
 }
-.mermaid-wrap:hover .mermaid-zoom, .mermaid-zoom:focus-visible { opacity: 1; }
-.mermaid-zoom:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.pz-btn:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.mermaid-bar {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;
+  opacity: 0.35; transition: opacity 0.12s;
+}
+.mermaid-wrap:hover .mermaid-bar, .mermaid-bar:focus-within { opacity: 1; }
 
 .mermaid-modal {
   position: fixed; inset: 0; z-index: 100; background: var(--bg);
@@ -163,26 +175,9 @@ body.diagrams .wrap { max-width: 1500px; }
   display: flex; align-items: center; gap: 6px; padding: 8px 12px;
   border-bottom: 1px solid var(--border); background: var(--panel);
 }
-.mermaid-modal .bar button {
-  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
-  border-radius: 6px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer;
-}
-.mermaid-modal .bar button:hover { color: var(--fg-strong); border-color: var(--border-strong); }
 .mermaid-modal .bar .spacer { flex: 1; }
 .mermaid-modal .bar .hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }
-/* Панорама тянется мышью, поэтому выделение текста здесь только мешает:
-   иначе протяжка подсвечивает подписи вместо того, чтобы двигать схему. */
-.mermaid-modal .stage-scroll {
-  flex: 1; overflow: auto; padding: 20px; cursor: grab;
-  user-select: none; -webkit-user-select: none;
-}
-.mermaid-modal .stage-scroll.grabbing { cursor: grabbing; }
-.mermaid-modal .holder { margin: 0 auto; }
-.mermaid-modal .stage { transform-origin: 0 0; transition: transform 130ms ease-out; }
-.mermaid-modal .stage svg { display: block; max-width: none; }
-@media (prefers-reduced-motion: reduce) {
-  .mermaid-modal .stage { transition: none; }
-}
+.mermaid-modal .pz { position: relative; flex: 1; inset: auto; }
 pre[data-lang]::before {
   content: attr(data-lang); position: absolute; top: 6px; right: 10px;
   font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim);
@@ -388,27 +383,162 @@ const MERMAID = `
   await draw();
   dark.addEventListener('change', draw);
 
-  // --- превью → просмотрщик ---------------------------------------------------
+  // --- pan/zoom: одна механика для врезки и просмотрщика ----------------------
+
+  /**
+   * Двигаем и масштабируем трансформом, а не прокруткой: скроллом панорама
+   * работает только там, где есть переполнение, — по второй оси схема стоит колом.
+   */
+  function panzoom(host, svg, pad) {
+    const stage = document.createElement('div');
+    stage.className = 'pz-stage';
+    svg.removeAttribute('style');
+    stage.append(svg);
+    host.append(stage);
+
+    const vb = (svg.getAttribute('viewBox') || '').split(/[\s,]+/).map(Number);
+    const natW = vb[2] || svg.getBoundingClientRect().width || 1;
+    const natH = vb[3] || svg.getBoundingClientRect().height || 1;
+    svg.setAttribute('width', String(natW));
+    svg.setAttribute('height', String(natH));
+
+    let k = 1;
+    let x = 0;
+    let y = 0;
+    let onScale = null;
+
+    const apply = (animate) => {
+      stage.style.transition = animate ? 'transform 130ms ease-out' : 'none';
+      stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + k + ')';
+      if (onScale) onScale(k);
+    };
+
+    const fit = (animate) => {
+      const b = host.getBoundingClientRect();
+      k = Math.min((b.width - pad * 2) / natW, (b.height - pad * 2) / natH);
+      x = (b.width - natW * k) / 2;
+      y = (b.height - natH * k) / 2;
+      apply(animate);
+    };
+
+    // Точка под курсором остаётся на месте — иначе схема уезжает от того, что разглядывают.
+    const zoomAt = (factor, px, py, animate) => {
+      const next = Math.min(8, Math.max(0.02, k * factor));
+      x = px - (px - x) * (next / k);
+      y = py - (py - y) * (next / k);
+      k = next;
+      apply(animate);
+    };
+
+    const zoom = (factor) => {
+      const b = host.getBoundingClientRect();
+      zoomAt(factor, b.width / 2, b.height / 2, true);
+    };
+
+    const setScale = (value) => {
+      const b = host.getBoundingClientRect();
+      zoomAt(value / k, b.width / 2, b.height / 2, true);
+    };
+
+    let wheelIdle;
+    host.addEventListener(
+      'wheel',
+      (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        clearTimeout(wheelIdle);
+        const b = host.getBoundingClientRect();
+        zoomAt(Math.exp(-e.deltaY * WHEEL_STEP), e.clientX - b.left, e.clientY - b.top, false);
+      },
+      { passive: false },
+    );
+
+    let drag = null;
+    host.addEventListener('dragstart', (e) => e.preventDefault());
+    host.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { px: e.clientX, py: e.clientY, x, y };
+      host.setPointerCapture(e.pointerId);
+      host.classList.add('grabbing');
+    });
+    host.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      x = drag.x + (e.clientX - drag.px);
+      y = drag.y + (e.clientY - drag.py);
+      apply(false);
+    });
+    const endDrag = () => {
+      drag = null;
+      host.classList.remove('grabbing');
+    };
+    host.addEventListener('pointerup', endDrag);
+    host.addEventListener('pointercancel', endDrag);
+    host.addEventListener('dblclick', () => fit(true));
+
+    addEventListener('resize', () => fit(false));
+
+    return {
+      fit,
+      zoom,
+      setScale,
+      onScale: (fn) => {
+        onScale = fn;
+        fn(k);
+      },
+    };
+  }
+
+  function button(label, title, act) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pz-btn';
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    if (act) b.dataset.act = act;
+    return b;
+  }
+
+  // --- врезка -----------------------------------------------------------------
 
   function decorate(pre) {
-    if (pre.parentElement?.classList.contains('mermaid-wrap')) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'mermaid-wrap';
-    pre.replaceWith(wrap);
-    wrap.append(pre);
+    let wrap = pre.parentElement;
+    if (!wrap?.classList.contains('mermaid-wrap')) {
+      wrap = document.createElement('div');
+      wrap.className = 'mermaid-wrap';
+      pre.replaceWith(wrap);
+      wrap.append(pre);
+    }
+    // Перерисовка (смена темы) заново наполняет pre — панель собираем заново.
+    wrap.querySelector('.mermaid-bar')?.remove();
 
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'mermaid-zoom';
-    btn.title = 'Открыть схему';
-    btn.setAttribute('aria-label', 'Открыть схему в просмотрщике');
-    btn.textContent = '⤢';
-    wrap.append(btn);
+    const svg = pre.querySelector('svg');
+    if (!svg) return;
 
-    const open = () => viewer(pre);
-    btn.addEventListener('click', open);
-    pre.addEventListener('click', open);
+    const host = document.createElement('div');
+    host.className = 'pz';
+    pre.textContent = '';
+    pre.append(host);
+
+    const pz = panzoom(host, svg, 14);
+    pz.fit(false);
+
+    const bar = document.createElement('div');
+    bar.className = 'mermaid-bar';
+    const out = button('−', 'Отдалить');
+    const inn = button('+', 'Приблизить');
+    const fit = button('вписать', 'Вписать схему целиком');
+    const full = button('⤢', 'Открыть во весь экран');
+    out.addEventListener('click', () => pz.zoom(1 / ZOOM_STEP));
+    inn.addEventListener('click', () => pz.zoom(ZOOM_STEP));
+    fit.addEventListener('click', () => pz.fit(true));
+    full.addEventListener('click', () => viewer(pre));
+    bar.append(out, inn, fit, full);
+    wrap.append(bar);
   }
+
+  // --- просмотрщик ------------------------------------------------------------
 
   function viewer(pre) {
     const svg = pre.querySelector('svg');
@@ -418,70 +548,35 @@ const MERMAID = `
     modal.className = 'mermaid-modal';
     modal.innerHTML =
       '<div class="bar">' +
-      '<button data-act="out" title="Отдалить">−</button>' +
+      '<button class="pz-btn" data-act="out" title="Отдалить">−</button>' +
       '<span class="hint" data-role="scale">100%</span>' +
-      '<button data-act="in" title="Приблизить">+</button>' +
-      '<button data-act="fit">вписать</button>' +
-      '<button data-act="one">1:1</button>' +
+      '<button class="pz-btn" data-act="in" title="Приблизить">+</button>' +
+      '<button class="pz-btn" data-act="fit">вписать</button>' +
+      '<button class="pz-btn" data-act="one">1:1</button>' +
       '<span class="spacer"></span>' +
-      '<span class="hint">Ctrl + колесо — зум · тянуть мышью — двигать</span>' +
-      '<button data-act="full">во весь экран</button>' +
-      '<button data-act="close" title="Закрыть (Esc)">✕</button>' +
+      '<span class="hint">Ctrl + колесо — зум · тянуть мышью — двигать · двойной клик — вписать</span>' +
+      '<button class="pz-btn" data-act="full">во весь экран</button>' +
+      '<button class="pz-btn" data-act="close" title="Закрыть (Esc)">✕</button>' +
       '</div>' +
-      '<div class="stage-scroll"><div class="holder"><div class="stage"></div></div></div>';
+      '<div class="pz"></div>';
 
-    const scroller = modal.querySelector('.stage-scroll');
-    const holder = modal.querySelector('.holder');
-    const stage = modal.querySelector('.stage');
+    const host = modal.querySelector('.pz');
     const label = modal.querySelector('[data-role="scale"]');
-
-    const clone = svg.cloneNode(true);
-    clone.removeAttribute('style');
-    stage.append(clone);
     document.body.append(modal);
     document.body.style.overflow = 'hidden';
 
-    const vb = (clone.getAttribute('viewBox') || '').split(/[\\s,]+/).map(Number);
-    const natW = vb[2] || svg.getBoundingClientRect().width;
-    const natH = vb[3] || svg.getBoundingClientRect().height;
-    clone.setAttribute('width', String(natW));
-    clone.setAttribute('height', String(natH));
+    const pz = panzoom(host, svg.cloneNode(true), 24);
+    pz.onScale((k) => {
+      label.textContent = Math.round(k * 100) + '%';
+    });
+    pz.fit(false);
 
-    // Масштаб — трансформом с переходом: анимируется плавно, а размер холдера
-    // держит полосы прокрутки в согласии с картинкой.
-    let scale = 1;
-    const setScale = (next, anchorX, anchorY) => {
-      const prev = scale;
-      scale = Math.min(8, Math.max(0.05, next));
-
-      const cx = anchorX ?? scroller.clientWidth / 2;
-      const cy = anchorY ?? scroller.clientHeight / 2;
-      const px = (scroller.scrollLeft + cx) / prev;
-      const py = (scroller.scrollTop + cy) / prev;
-
-      holder.style.width = natW * scale + 'px';
-      holder.style.height = natH * scale + 'px';
-      stage.style.transform = 'scale(' + scale + ')';
-      label.textContent = Math.round(scale * 100) + '%';
-
-      scroller.scrollLeft = px * scale - cx;
-      scroller.scrollTop = py * scale - cy;
-    };
-
-    const fit = () => {
-      const box = scroller.getBoundingClientRect();
-      setScale(Math.min((box.width - 40) / natW, (box.height - 40) / natH));
-    };
-    const zoom = (factor, x, y) => setScale(scale * factor, x, y);
-
-    fit();
-
-    // Подпись кнопки ведём от состояния браузера, а не от собственного флага:
-    // из полного экрана выходят и по Esc, и по F11 — мимо нашего обработчика.
+    // Подпись кнопки ведём от состояния браузера, а не от своего флага: выйти из
+    // полного экрана можно по Esc или F11, мимо нашего обработчика.
     const fullBtn = modal.querySelector('[data-act="full"]');
     const syncFull = () => {
-      const on = document.fullscreenElement === modal;
-      fullBtn.textContent = on ? 'выйти из полного экрана' : 'во весь экран';
+      fullBtn.textContent =
+        document.fullscreenElement === modal ? 'выйти из полного экрана' : 'во весь экран';
     };
     document.addEventListener('fullscreenchange', syncFull);
 
@@ -495,69 +590,24 @@ const MERMAID = `
 
     const onKey = (e) => {
       if (e.key === 'Escape') close();
-      if (e.key === '+' || e.key === '=') zoom(ZOOM_STEP);
-      if (e.key === '-') zoom(1 / ZOOM_STEP);
-      if (e.key === '0') fit();
+      if (e.key === '+' || e.key === '=') pz.zoom(ZOOM_STEP);
+      if (e.key === '-') pz.zoom(1 / ZOOM_STEP);
+      if (e.key === '0') pz.fit(true);
     };
     addEventListener('keydown', onKey);
 
     modal.querySelector('.bar').addEventListener('click', (e) => {
       const act = e.target.dataset?.act;
-      if (act === 'in') zoom(ZOOM_STEP);
-      if (act === 'out') zoom(1 / ZOOM_STEP);
-      if (act === 'fit') fit();
-      if (act === 'one') setScale(1);
+      if (act === 'in') pz.zoom(ZOOM_STEP);
+      if (act === 'out') pz.zoom(1 / ZOOM_STEP);
+      if (act === 'fit') pz.fit(true);
+      if (act === 'one') pz.setScale(1);
       if (act === 'close') close();
       if (act === 'full') {
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         else modal.requestFullscreen().catch(() => {});
       }
     });
-
-    // Зум колесом только с Ctrl/⌘ (и тачпадным пинчем, он приходит тем же событием):
-    // иначе отобрали бы обычную прокрутку. Во время жеста переход выключаем —
-    // иначе анимация догоняет курсор и ощущается вязкой.
-    let wheelIdle;
-    scroller.addEventListener(
-      'wheel',
-      (e) => {
-        if (!e.ctrlKey && !e.metaKey) return;
-        e.preventDefault();
-
-        stage.style.transition = 'none';
-        clearTimeout(wheelIdle);
-        wheelIdle = setTimeout(() => {
-          stage.style.transition = '';
-        }, 180);
-
-        const box = scroller.getBoundingClientRect();
-        zoom(Math.exp(-e.deltaY * WHEEL_STEP), e.clientX - box.left, e.clientY - box.top);
-      },
-      { passive: false },
-    );
-
-    let drag = null;
-    // Без preventDefault браузер начинает своё перетаскивание (выделение подписей,
-    // drag картинки) — тогда панорама по самой схеме просто не работает.
-    scroller.addEventListener('dragstart', (e) => e.preventDefault());
-    scroller.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      drag = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
-      scroller.setPointerCapture(e.pointerId);
-      scroller.classList.add('grabbing');
-    });
-    scroller.addEventListener('pointermove', (e) => {
-      if (!drag) return;
-      scroller.scrollLeft = drag.left - (e.clientX - drag.x);
-      scroller.scrollTop = drag.top - (e.clientY - drag.y);
-    });
-    const endDrag = () => {
-      drag = null;
-      scroller.classList.remove('grabbing');
-    };
-    scroller.addEventListener('pointerup', endDrag);
-    scroller.addEventListener('pointercancel', endDrag);
   }
 })();
 `;
