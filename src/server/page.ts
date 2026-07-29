@@ -150,9 +150,6 @@ pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
 .pz-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
 .pz-stage svg { display: block; max-width: none; }
 @media (prefers-reduced-motion: reduce) { .pz-stage { transition: none !important; } }
-/* Страница со схемами шире обычной: колонка текста остаётся комфортной, а
-   диаграмме достаётся место, которое иначе пустует по краям. */
-body.diagrams { --page: 1320px; }
 
 /* Врезка открывается вписанной, но её можно двигать и приближать на месте. */
 .mermaid-wrap { position: relative; }
@@ -629,7 +626,7 @@ function shell(title: string, body: string, withMermaid = false): string {
 <title>${escapeHtml(title)}</title>
 <style>${CSS}</style>
 </head>
-<body${withMermaid ? ' class="diagrams"' : ''}>
+<body>
 ${body}
 <script>${SCROLLSPY}</script>
 ${withMermaid ? `<script>${MERMAID}</script>` : ''}
