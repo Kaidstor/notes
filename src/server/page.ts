@@ -331,6 +331,10 @@ const MERMAID = `
   const nodes = [...document.querySelectorAll('pre.mermaid')];
   if (!nodes.length) return;
 
+  // Шаг зума: одно нажатие = два прежних (1.2² ≈ 1.44), колесо — во столько же раз резвее.
+  const ZOOM_STEP = 1.44;
+  const WHEEL_STEP = 0.0032;
+
   const palette = (dark) => dark
     ? { background: '#09090b', mainBkg: '#18181b', nodeBorder: '#3f3f46', primaryColor: '#18181b',
         primaryTextColor: '#e4e4e7', primaryBorderColor: '#3f3f46', secondaryColor: '#101013',
@@ -472,25 +476,35 @@ const MERMAID = `
 
     fit();
 
+    // Подпись кнопки ведём от состояния браузера, а не от собственного флага:
+    // из полного экрана выходят и по Esc, и по F11 — мимо нашего обработчика.
+    const fullBtn = modal.querySelector('[data-act="full"]');
+    const syncFull = () => {
+      const on = document.fullscreenElement === modal;
+      fullBtn.textContent = on ? 'выйти из полного экрана' : 'во весь экран';
+    };
+    document.addEventListener('fullscreenchange', syncFull);
+
     const close = () => {
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
       modal.remove();
       document.body.style.overflow = '';
       removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', syncFull);
     };
 
     const onKey = (e) => {
       if (e.key === 'Escape') close();
-      if (e.key === '+' || e.key === '=') zoom(1.2);
-      if (e.key === '-') zoom(1 / 1.2);
+      if (e.key === '+' || e.key === '=') zoom(ZOOM_STEP);
+      if (e.key === '-') zoom(1 / ZOOM_STEP);
       if (e.key === '0') fit();
     };
     addEventListener('keydown', onKey);
 
     modal.querySelector('.bar').addEventListener('click', (e) => {
       const act = e.target.dataset?.act;
-      if (act === 'in') zoom(1.2);
-      if (act === 'out') zoom(1 / 1.2);
+      if (act === 'in') zoom(ZOOM_STEP);
+      if (act === 'out') zoom(1 / ZOOM_STEP);
       if (act === 'fit') fit();
       if (act === 'one') setScale(1);
       if (act === 'close') close();
@@ -517,7 +531,7 @@ const MERMAID = `
         }, 180);
 
         const box = scroller.getBoundingClientRect();
-        zoom(Math.exp(-e.deltaY * 0.0016), e.clientX - box.left, e.clientY - box.top);
+        zoom(Math.exp(-e.deltaY * WHEEL_STEP), e.clientX - box.left, e.clientY - box.top);
       },
       { passive: false },
     );
