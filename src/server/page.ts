@@ -170,7 +170,12 @@ body.diagrams .wrap { max-width: 1500px; }
 .mermaid-modal .bar button:hover { color: var(--fg-strong); border-color: var(--border-strong); }
 .mermaid-modal .bar .spacer { flex: 1; }
 .mermaid-modal .bar .hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }
-.mermaid-modal .stage-scroll { flex: 1; overflow: auto; padding: 20px; cursor: grab; }
+/* Панорама тянется мышью, поэтому выделение текста здесь только мешает:
+   иначе протяжка подсвечивает подписи вместо того, чтобы двигать схему. */
+.mermaid-modal .stage-scroll {
+  flex: 1; overflow: auto; padding: 20px; cursor: grab;
+  user-select: none; -webkit-user-select: none;
+}
 .mermaid-modal .stage-scroll.grabbing { cursor: grabbing; }
 .mermaid-modal .holder { margin: 0 auto; }
 .mermaid-modal .stage { transform-origin: 0 0; transition: transform 130ms ease-out; }
@@ -518,7 +523,12 @@ const MERMAID = `
     );
 
     let drag = null;
+    // Без preventDefault браузер начинает своё перетаскивание (выделение подписей,
+    // drag картинки) — тогда панорама по самой схеме просто не работает.
+    scroller.addEventListener('dragstart', (e) => e.preventDefault());
     scroller.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
       drag = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
       scroller.setPointerCapture(e.pointerId);
       scroller.classList.add('grabbing');
