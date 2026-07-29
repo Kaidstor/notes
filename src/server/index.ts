@@ -4,7 +4,7 @@ import { basicAuth } from 'hono/basic-auth';
 import { bearerAuth } from 'hono/bearer-auth';
 import { logger } from 'hono/logger';
 
-import { countNotes, deleteNote, getNote, listNotes, upsertNote } from './db.ts';
+import { countNotes, deleteNote, getNote, listNotes, listTags, upsertNote } from './db.ts';
 import { renderNotFound, renderNotePage } from './page.ts';
 import { parseFrontmatter, renderMarkdown } from './render.ts';
 
@@ -88,7 +88,8 @@ app.get('/api/notes', guardIndex, (c) =>
   c.json({
     site: SITE_NAME,
     total: countNotes(),
-    notes: listNotes(c.req.query('q') ?? ''),
+    tags: listTags(),
+    notes: listNotes(c.req.query('q') ?? '', c.req.queries('tag') ?? []),
   }),
 );
 
@@ -110,6 +111,8 @@ app.get('/:uuid{[0-9a-fA-F-]{36}}/raw', (c) => {
 
 // --- SPA ---------------------------------------------------------------------
 
+// Бандл mermaid: страница заметки импортирует его динамически, только если в ней есть схема.
+app.use('/vendor/*', serveStatic({ root: './dist/web' }));
 app.use('/assets/*', serveStatic({ root: './dist/web' }));
 app.use('/favicon.svg', serveStatic({ root: './dist/web' }));
 app.get('/', guardIndex, serveStatic({ path: './dist/web/index.html' }));

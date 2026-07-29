@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "concurrently -k -n server,web -c cyan,magenta \"bun run dev:server\" \"vite\"",
     "dev:server": "bun --watch src/server/index.ts",
-    "build": "tsc --noEmit && vite build && bun run build:server",
+    "build": "tsc --noEmit && vite build && bun run build:vendor && bun run build:server",
+    "build:vendor": "bun build src/web/mermaid.ts --target browser --format esm --minify --splitting --outdir dist/web/vendor",
     "build:server": "bun build src/server/index.ts --target bun --minify --outfile dist/server.js",
     "start": "bun src/server/index.ts",
     "seed": "bun scripts/seed.ts"
@@ -16,6 +17,7 @@
     "hono": "^4.9.10",
     "lucide-react": "^1.23.0",
     "marked": "^15.0.12",
+    "mermaid": "^11.16.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

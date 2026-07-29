@@ -28,7 +28,13 @@ marked.use({
       return `<h${token.depth} id="${slugify(token.text)}">${text}</h${token.depth}>\n`;
     },
     code(token: Tokens.Code) {
-      const lang = token.lang ? ` data-lang="${escapeHtml(token.lang.split(/\s/)[0]!)}"` : '';
+      const name = token.lang?.split(/\s/)[0];
+      // Схему не подсвечиваем как код: исходник кладём как есть, рисует его
+      // mermaid уже в браузере (страница подключает его, увидев class="mermaid").
+      if (name === 'mermaid') {
+        return `<pre class="mermaid">${escapeHtml(token.text)}</pre>\n`;
+      }
+      const lang = name ? ` data-lang="${escapeHtml(name)}"` : '';
       return `<pre${lang}><code>${escapeHtml(token.text)}</code></pre>\n`;
     },
     table(token: Tokens.Table) {

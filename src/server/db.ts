@@ -14,6 +14,11 @@ export interface NoteRow {
   updated_at: string;
 }
 
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
 export interface NoteListItem {
   uuid: string;
   title: string;
@@ -89,23 +94,31 @@ export function deleteNote(uuid: string): boolean {
   return db.query('DELETE FROM notes WHERE uuid = ?').run(uuid).changes > 0;
 }
 
-export function listNotes(query: string, limit = 200): NoteListItem[] {
+export function listNotes(query: string, tags: string[] = [], limit = 200): NoteListItem[] {
   const q = query.trim().toLowerCase();
+  const picked = tags.map((t) => t.trim()).filter(Boolean);
 
-  const rows = q
-    ? (db
-        .query(
-          `SELECT uuid, title, plain, tags, created_at, updated_at
-             FROM notes WHERE search LIKE ?
-             ORDER BY updated_at DESC LIMIT ?`,
-        )
-        .all(`%${q}%`, limit) as NoteRow[])
-    : (db
-        .query(
-          `SELECT uuid, title, plain, tags, created_at, updated_at
-             FROM notes ORDER BY updated_at DESC LIMIT ?`,
-        )
-        .all(limit) as NoteRow[]);
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (q) {
+    where.push('search LIKE ?');
+    params.push(`%${q}%`);
+  }
+  // Точное совпадение тега, а не подстрока: LIKE по JSON нашёл бы `recon` внутри
+  // `recon-front`. Несколько тегов — И, отбор сужается с каждым выбранным.
+  for (const tag of picked) {
+    where.push('EXISTS (SELECT 1 FROM json_each(notes.tags) WHERE value = ?)');
+    params.push(tag);
+  }
+
+  const rows = db
+    .query(
+      `SELECT uuid, title, plain, tags, created_at, updated_at
+         FROM notes ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+         ORDER BY updated_at DESC LIMIT ?`,
+    )
+    .all(...params, limit) as NoteRow[];
 
   return rows.map((row) => ({
     uuid: row.uuid,
@@ -115,6 +128,18 @@ export function listNotes(query: string, limit = 200): NoteListItem[] {
     updated_at: row.updated_at,
     snippet: snippet(row.plain, q),
   }));
+}
+
+/** Все теги с числом заметок — из них рисуется фильтр в индексе. */
+export function listTags(): TagCount[] {
+  return db
+    .query(
+      `SELECT value AS tag, count(*) AS count
+         FROM notes, json_each(notes.tags)
+         GROUP BY value
+         ORDER BY count DESC, value ASC`,
+    )
+    .all() as TagCount[];
 }
 
 export function countNotes(): number {

@@ -126,6 +126,58 @@ pre {
   font-size: 12.5px; line-height: 1.6;
 }
 pre code { background: none; border: none; padding: 0; font-size: inherit; color: var(--fg); }
+/* До отрисовки виден исходник: страница остаётся осмысленной, если бандл mermaid
+   не загрузился. После — превью 16:10 со схемой, вписанной целиком. */
+pre.mermaid {
+  background: none; border: none; padding: 8px 0; margin: 22px 0;
+  line-height: 1.5; color: var(--dim); overflow-x: auto;
+}
+pre.mermaid[data-processed] {
+  color: inherit; overflow: hidden; cursor: zoom-in;
+  aspect-ratio: 16 / 10; display: grid; place-items: center;
+  padding: 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
+/* Вписываем и по высоте тоже: иначе высокая схема растягивает страницу на экраны. */
+pre.mermaid svg { max-width: 100%; max-height: 100%; width: auto; height: auto; }
+/* Страница со схемами шире обычной: колонка текста остаётся комфортной, а
+   диаграмме достаётся место, которое иначе пустует по краям. */
+body.diagrams .wrap { max-width: 1500px; }
+
+/* Врезка вписана по ширине — разглядывать схему идут в полноэкранный просмотр. */
+.mermaid-wrap { position: relative; }
+.mermaid-zoom {
+  position: absolute; top: 8px; right: 8px; opacity: 0.5; transition: opacity 0.12s;
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  border-radius: 6px; padding: 3px 8px; font-size: 12px; line-height: 1.3; cursor: pointer;
+}
+.mermaid-wrap:hover .mermaid-zoom, .mermaid-zoom:focus-visible { opacity: 1; }
+.mermaid-zoom:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+
+.mermaid-modal {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: flex; flex-direction: column;
+}
+.mermaid-modal .bar {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.mermaid-modal .bar button {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  border-radius: 6px; padding: 2px 10px; font: inherit; font-size: 12px; cursor: pointer;
+}
+.mermaid-modal .bar button:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.mermaid-modal .bar .spacer { flex: 1; }
+.mermaid-modal .bar .hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.mermaid-modal .stage-scroll { flex: 1; overflow: auto; padding: 20px; cursor: grab; }
+.mermaid-modal .stage-scroll.grabbing { cursor: grabbing; }
+.mermaid-modal .holder { margin: 0 auto; }
+.mermaid-modal .stage { transform-origin: 0 0; transition: transform 130ms ease-out; }
+.mermaid-modal .stage svg { display: block; max-width: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mermaid-modal .stage { transition: none; }
+}
 pre[data-lang]::before {
   content: attr(data-lang); position: absolute; top: 6px; right: 10px;
   font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim);
@@ -267,13 +319,232 @@ const SCROLLSPY = `
 })();
 `;
 
+/** Отрисовка ```mermaid-блоков. Бандл грузится динамически и только на страницах,
+ *  где схема есть: он тяжелее всей остальной страницы вместе взятой. */
+const MERMAID = `
+(async () => {
+  const nodes = [...document.querySelectorAll('pre.mermaid')];
+  if (!nodes.length) return;
+
+  const palette = (dark) => dark
+    ? { background: '#09090b', mainBkg: '#18181b', nodeBorder: '#3f3f46', primaryColor: '#18181b',
+        primaryTextColor: '#e4e4e7', primaryBorderColor: '#3f3f46', secondaryColor: '#101013',
+        tertiaryColor: '#101013', lineColor: '#52525b', textColor: '#e4e4e7',
+        edgeLabelBackground: '#09090b', clusterBkg: '#101013', clusterBorder: '#27272a',
+        titleColor: '#fafafa' }
+    : { background: '#fafafa', mainBkg: '#f4f4f5', nodeBorder: '#d4d4d8', primaryColor: '#f4f4f5',
+        primaryTextColor: '#27272a', primaryBorderColor: '#d4d4d8', secondaryColor: '#ffffff',
+        tertiaryColor: '#ffffff', lineColor: '#a1a1aa', textColor: '#27272a',
+        edgeLabelBackground: '#fafafa', clusterBkg: '#ffffff', clusterBorder: '#e4e4e7',
+        titleColor: '#09090b' };
+
+  let mermaid;
+  try {
+    ({ default: mermaid } = await import('/vendor/mermaid.js'));
+  } catch (e) {
+    console.warn('[notes] mermaid не загрузился, схемы остались исходником', e);
+    return;
+  }
+
+  const sources = nodes.map((el) => el.textContent);
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+
+  const draw = async () => {
+    nodes.forEach((el, i) => {
+      el.textContent = sources[i];
+      el.removeAttribute('data-processed');
+    });
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      // Публиковать может только владелец токена, поэтому HTML в подписях
+      // разрешён (нужен для <br/>), а скрипты вырезаются.
+      securityLevel: 'antiscript',
+      themeVariables: {
+        ...palette(dark.matches),
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontSize: '13px',
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true },
+    });
+    try {
+      await mermaid.run({ nodes });
+    } catch (e) {
+      console.warn('[notes] схема не отрисована', e);
+      return;
+    }
+    nodes.forEach(decorate);
+  };
+
+  await draw();
+  dark.addEventListener('change', draw);
+
+  // --- превью → просмотрщик ---------------------------------------------------
+
+  function decorate(pre) {
+    if (pre.parentElement?.classList.contains('mermaid-wrap')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'mermaid-wrap';
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'mermaid-zoom';
+    btn.title = 'Открыть схему';
+    btn.setAttribute('aria-label', 'Открыть схему в просмотрщике');
+    btn.textContent = '⤢';
+    wrap.append(btn);
+
+    const open = () => viewer(pre);
+    btn.addEventListener('click', open);
+    pre.addEventListener('click', open);
+  }
+
+  function viewer(pre) {
+    const svg = pre.querySelector('svg');
+    if (!svg) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-modal';
+    modal.innerHTML =
+      '<div class="bar">' +
+      '<button data-act="out" title="Отдалить">−</button>' +
+      '<span class="hint" data-role="scale">100%</span>' +
+      '<button data-act="in" title="Приблизить">+</button>' +
+      '<button data-act="fit">вписать</button>' +
+      '<button data-act="one">1:1</button>' +
+      '<span class="spacer"></span>' +
+      '<span class="hint">Ctrl + колесо — зум · тянуть мышью — двигать</span>' +
+      '<button data-act="full">во весь экран</button>' +
+      '<button data-act="close" title="Закрыть (Esc)">✕</button>' +
+      '</div>' +
+      '<div class="stage-scroll"><div class="holder"><div class="stage"></div></div></div>';
+
+    const scroller = modal.querySelector('.stage-scroll');
+    const holder = modal.querySelector('.holder');
+    const stage = modal.querySelector('.stage');
+    const label = modal.querySelector('[data-role="scale"]');
+
+    const clone = svg.cloneNode(true);
+    clone.removeAttribute('style');
+    stage.append(clone);
+    document.body.append(modal);
+    document.body.style.overflow = 'hidden';
+
+    const vb = (clone.getAttribute('viewBox') || '').split(/[\\s,]+/).map(Number);
+    const natW = vb[2] || svg.getBoundingClientRect().width;
+    const natH = vb[3] || svg.getBoundingClientRect().height;
+    clone.setAttribute('width', String(natW));
+    clone.setAttribute('height', String(natH));
+
+    // Масштаб — трансформом с переходом: анимируется плавно, а размер холдера
+    // держит полосы прокрутки в согласии с картинкой.
+    let scale = 1;
+    const setScale = (next, anchorX, anchorY) => {
+      const prev = scale;
+      scale = Math.min(8, Math.max(0.05, next));
+
+      const cx = anchorX ?? scroller.clientWidth / 2;
+      const cy = anchorY ?? scroller.clientHeight / 2;
+      const px = (scroller.scrollLeft + cx) / prev;
+      const py = (scroller.scrollTop + cy) / prev;
+
+      holder.style.width = natW * scale + 'px';
+      holder.style.height = natH * scale + 'px';
+      stage.style.transform = 'scale(' + scale + ')';
+      label.textContent = Math.round(scale * 100) + '%';
+
+      scroller.scrollLeft = px * scale - cx;
+      scroller.scrollTop = py * scale - cy;
+    };
+
+    const fit = () => {
+      const box = scroller.getBoundingClientRect();
+      setScale(Math.min((box.width - 40) / natW, (box.height - 40) / natH));
+    };
+    const zoom = (factor, x, y) => setScale(scale * factor, x, y);
+
+    fit();
+
+    const close = () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      modal.remove();
+      document.body.style.overflow = '';
+      removeEventListener('keydown', onKey);
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') close();
+      if (e.key === '+' || e.key === '=') zoom(1.2);
+      if (e.key === '-') zoom(1 / 1.2);
+      if (e.key === '0') fit();
+    };
+    addEventListener('keydown', onKey);
+
+    modal.querySelector('.bar').addEventListener('click', (e) => {
+      const act = e.target.dataset?.act;
+      if (act === 'in') zoom(1.2);
+      if (act === 'out') zoom(1 / 1.2);
+      if (act === 'fit') fit();
+      if (act === 'one') setScale(1);
+      if (act === 'close') close();
+      if (act === 'full') {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else modal.requestFullscreen().catch(() => {});
+      }
+    });
+
+    // Зум колесом только с Ctrl/⌘ (и тачпадным пинчем, он приходит тем же событием):
+    // иначе отобрали бы обычную прокрутку. Во время жеста переход выключаем —
+    // иначе анимация догоняет курсор и ощущается вязкой.
+    let wheelIdle;
+    scroller.addEventListener(
+      'wheel',
+      (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+
+        stage.style.transition = 'none';
+        clearTimeout(wheelIdle);
+        wheelIdle = setTimeout(() => {
+          stage.style.transition = '';
+        }, 180);
+
+        const box = scroller.getBoundingClientRect();
+        zoom(Math.exp(-e.deltaY * 0.0016), e.clientX - box.left, e.clientY - box.top);
+      },
+      { passive: false },
+    );
+
+    let drag = null;
+    scroller.addEventListener('pointerdown', (e) => {
+      drag = { x: e.clientX, y: e.clientY, left: scroller.scrollLeft, top: scroller.scrollTop };
+      scroller.setPointerCapture(e.pointerId);
+      scroller.classList.add('grabbing');
+    });
+    scroller.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      scroller.scrollLeft = drag.left - (e.clientX - drag.x);
+      scroller.scrollTop = drag.top - (e.clientY - drag.y);
+    });
+    const endDrag = () => {
+      drag = null;
+      scroller.classList.remove('grabbing');
+    };
+    scroller.addEventListener('pointerup', endDrag);
+    scroller.addEventListener('pointercancel', endDrag);
+  }
+})();
+`;
+
 const dateFmt = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' });
 
 function formatDate(iso: string): string {
   return dateFmt.format(new Date(iso));
 }
 
-function shell(title: string, body: string): string {
+function shell(title: string, body: string, withMermaid = false): string {
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -282,9 +553,10 @@ function shell(title: string, body: string): string {
 <title>${escapeHtml(title)}</title>
 <style>${CSS}</style>
 </head>
-<body>
+<body${withMermaid ? ' class="diagrams"' : ''}>
 ${body}
 <script>${SCROLLSPY}</script>
+${withMermaid ? `<script>${MERMAID}</script>` : ''}
 </body>
 </html>`;
 }
@@ -342,6 +614,7 @@ ${note.html}
   <span>·</span>
   <a href="/${note.uuid}/raw">исходник</a>
 </footer>`,
+    note.html.includes('class="mermaid"'),
   );
 }
 
