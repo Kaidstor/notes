@@ -326,9 +326,10 @@ const MERMAID = `
   const nodes = [...document.querySelectorAll('pre.mermaid')];
   if (!nodes.length) return;
 
-  // Шаг зума: одно нажатие = два прежних (1.2² ≈ 1.44), колесо — во столько же раз резвее.
-  const ZOOM_STEP = 1.44;
-  const WHEEL_STEP = 0.0032;
+  // Шаг зума подбирался на живой схеме: 1.73 ≈ полтора прежних нажатия (1.44^1.5),
+  // колесо ускорено соразмерно, чтобы жест и кнопки ощущались одинаково.
+  const ZOOM_STEP = 1.73;
+  const WHEEL_STEP = 0.0048;
 
   const palette = (dark) => dark
     ? { background: '#09090b', mainBkg: '#18181b', nodeBorder: '#3f3f46', primaryColor: '#18181b',
