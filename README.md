@@ -31,8 +31,11 @@ bun dist/server.js     # то же, но из бандла — так же, ка
 | `GET` | `/api/notes?q=` | basic | Поиск по заголовку, тегам и тексту |
 | `POST` | `/api/notes` | bearer | Публикация/обновление: `{markdown, title?, uuid?, tags?}` |
 | `DELETE` | `/api/notes/:uuid` | bearer | Удаление |
+| `GET` | `/api/notes/:uuid` | basic | Заметка для редактора: markdown, теги |
+| `PUT` | `/api/notes/:uuid` | basic | Сохранение из редактора: `{markdown}` |
 | `GET` | `/{uuid}` | публично | Страница заметки |
 | `GET` | `/{uuid}/raw` | публично | Исходный markdown |
+| `GET` | `/{uuid}/edit` | basic | Редактор с подсветкой markdown |
 | `GET` | `/healthz` | публично | Живость + число заметок |
 
 Заголовок берётся из frontmatter (`title:`), иначе из первого `# H1` — H1 при этом

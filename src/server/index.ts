@@ -93,6 +93,46 @@ app.get('/api/notes', guardIndex, (c) =>
   }),
 );
 
+// --- редактор в браузере (Basic) ----------------------------------------------
+
+app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardIndex, (c) => {
+  const note = getNote(c.req.param('uuid'));
+  if (!note) return c.json({ error: 'не найдено' }, 404);
+
+  return c.json({
+    uuid: note.uuid,
+    title: note.title,
+    markdown: note.markdown,
+    tags: JSON.parse(note.tags) as string[],
+    created_at: note.created_at,
+    updated_at: note.updated_at,
+  });
+});
+
+app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardIndex, async (c) => {
+  const existing = getNote(c.req.param('uuid'));
+  if (!existing) return c.json({ error: 'не найдено' }, 404);
+
+  const payload = (await c.req.json()) as { markdown?: string };
+  if (!payload.markdown?.trim()) return c.json({ error: 'markdown обязателен' }, 400);
+
+  const { data, body } = parseFrontmatter(payload.markdown);
+  const rendered = renderMarkdown(body, data.title);
+
+  const note = upsertNote({
+    uuid: existing.uuid,
+    title: rendered.title,
+    markdown: payload.markdown,
+    html: rendered.html,
+    toc: JSON.stringify(rendered.toc),
+    plain: rendered.plain,
+    // Теги, заданные при публикации параметром (мимо frontmatter), не теряем.
+    tags: data.tags ?? (JSON.parse(existing.tags) as string[]),
+  });
+
+  return c.json({ uuid: note.uuid, title: note.title, updated_at: note.updated_at });
+});
+
 // --- публичные страницы заметок ---------------------------------------------
 
 app.get('/:uuid{[0-9a-fA-F-]{36}}', (c) => {
@@ -116,6 +156,12 @@ app.use('/vendor/*', serveStatic({ root: './dist/web' }));
 app.use('/assets/*', serveStatic({ root: './dist/web' }));
 app.use('/favicon.svg', serveStatic({ root: './dist/web' }));
 app.get('/', guardIndex, serveStatic({ path: './dist/web/index.html' }));
+// Редактор — та же SPA, маршрут разбирает фронт по pathname.
+app.get(
+  '/:uuid{[0-9a-fA-F-]{36}}/edit',
+  guardIndex,
+  serveStatic({ path: './dist/web/index.html' }),
+);
 
 console.log(`[notes] ${SITE_NAME} → http://localhost:${PORT} (${countNotes()} заметок)`);
 

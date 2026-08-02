@@ -50,9 +50,17 @@ export const THEMES: Theme[] = [
       '--color-zinc-900': '#f4f4f5',
       '--color-zinc-925': '#ffffff',
       '--color-zinc-950': '#fafafa',
+      '--color-sky-300': '#0284c7',
       '--color-sky-400': '#0284c7',
       '--color-sky-500': '#0284c7',
       '--color-sky-600': '#0369a1',
+      // Акценты подсветки markdown в редакторе: дефолтные 300-е тона Tailwind
+      // на белом фоне нечитаемы, значения — из светлой палитры страниц заметок.
+      '--color-amber-300': '#b45309',
+      '--color-amber-400': '#b45309',
+      '--color-emerald-300': '#059669',
+      '--color-violet-400': '#7c3aed',
+      '--color-red-400': '#dc2626',
     },
   },
 ];

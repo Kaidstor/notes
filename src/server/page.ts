@@ -662,6 +662,7 @@ export function renderNotePage(note: NoteRow, siteName: string): string {
   <div class="topbar-inner">
     <a class="brand" href="/">${escapeHtml(siteName)}</a>
     <span class="spacer"></span>
+    <a class="chip" href="/${note.uuid}/edit">править</a>
     <a class="chip" href="/${note.uuid}/raw">markdown</a>
   </div>
 </div>
