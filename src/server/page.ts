@@ -180,6 +180,32 @@ pre[data-lang]::before {
   content: attr(data-lang); position: absolute; top: 6px; right: 10px;
   font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim);
 }
+/* Длинные строки переносятся: горизонтальный скролл в тексте читать неудобно.
+   Правило не завязано на скрипт — без JS блок всё равно переносится. */
+article pre:not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
+article pre.nowrap { white-space: pre; overflow-wrap: normal; }
+/* Панель блока кода живёт в обёртке, а не в pre: внутри скроллящегося pre она
+   уезжала бы вместе с длинной строкой. */
+.code-wrap { position: relative; }
+/* Фон панели непрозрачный: под ней проезжает первая строка кода. */
+.code-bar {
+  position: absolute; top: 1px; right: 1px; z-index: 1;
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 6px 5px 10px; border-radius: 0 7px 0 8px; background: var(--panel);
+  opacity: 0; pointer-events: none; transition: opacity 0.12s;
+}
+.code-wrap:hover .code-bar, .code-bar:focus-within { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .code-bar { opacity: 1; pointer-events: auto; } }
+.code-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  border-radius: 6px; padding: 2px 7px; font-family: var(--mono); font-size: 10.5px;
+  line-height: 1.5; cursor: pointer;
+}
+.code-btn:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.code-btn.copy { min-width: 84px; text-align: center; }
+.code-btn[aria-pressed="true"] {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
 blockquote {
   margin: 16px 0; padding: 2px 0 2px 16px; color: var(--muted);
   border-left: 2px solid var(--border-strong);
@@ -314,6 +340,72 @@ const SCROLLSPY = `
   addEventListener('scroll', onScroll, { passive: true });
   addEventListener('resize', onScroll, { passive: true });
   sync();
+})();
+`;
+
+/** Панель у блоков кода: копирование и перенос длинных строк. Перенос —
+ *  по кнопке, по умолчанию блок скроллится, как раньше. */
+const CODEBAR = `
+(() => {
+  const blocks = [...document.querySelectorAll('article pre:not(.mermaid)')];
+  if (!blocks.length) return;
+
+  const copy = async (text) => {
+    // Clipboard API доступен только в защищённом контексте — иначе execCommand.
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {}
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    return ok;
+  };
+
+  const button = (label, title, cls) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'code-btn' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.title = title;
+    return b;
+  };
+
+  for (const pre of blocks) {
+    const wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+
+    const bar = document.createElement('div');
+    bar.className = 'code-bar';
+
+    const wrapBtn = button('перенос', 'Переносить длинные строки');
+    wrapBtn.setAttribute('aria-pressed', 'true');
+    wrapBtn.addEventListener('click', () => {
+      wrapBtn.setAttribute('aria-pressed', String(!pre.classList.toggle('nowrap')));
+    });
+
+    const copyBtn = button('копировать', 'Скопировать блок', 'copy');
+    let timer;
+    copyBtn.addEventListener('click', async () => {
+      const ok = await copy((pre.querySelector('code') ?? pre).textContent);
+      copyBtn.textContent = ok ? 'скопировано' : 'не вышло';
+      clearTimeout(timer);
+      timer = setTimeout(() => { copyBtn.textContent = 'копировать'; }, 1400);
+    });
+
+    bar.append(wrapBtn, copyBtn);
+    wrap.append(bar);
+  }
 })();
 `;
 
@@ -630,6 +722,7 @@ function shell(title: string, body: string, withMermaid = false): string {
 <body>
 ${body}
 <script>${SCROLLSPY}</script>
+<script>${CODEBAR}</script>
 ${withMermaid ? `<script>${MERMAID}</script>` : ''}
 </body>
 </html>`;
