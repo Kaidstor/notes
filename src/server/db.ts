@@ -110,13 +110,23 @@ export function deleteNote(uuid: string): boolean {
   return db.query('DELETE FROM notes WHERE uuid = ?').run(uuid).changes > 0;
 }
 
-export function listNotes(query: string, tags: string[] = [], limit = 200): NoteListItem[] {
+/** `owner` сужает выборку до заметок одной роли: read видит в индексе только свои. */
+export function listNotes(
+  query: string,
+  tags: string[] = [],
+  owner?: NoteOwner,
+  limit = 200,
+): NoteListItem[] {
   const q = query.trim().toLowerCase();
   const picked = tags.map((t) => t.trim()).filter(Boolean);
 
   const where: string[] = [];
   const params: (string | number)[] = [];
 
+  if (owner) {
+    where.push('owner = ?');
+    params.push(owner);
+  }
   if (q) {
     where.push('search LIKE ?');
     params.push(`%${q}%`);
@@ -147,19 +157,25 @@ export function listNotes(query: string, tags: string[] = [], limit = 200): Note
 }
 
 /** Все теги с числом заметок — из них рисуется фильтр в индексе. */
-export function listTags(): TagCount[] {
+export function listTags(owner?: NoteOwner): TagCount[] {
   return db
     .query(
       `SELECT value AS tag, count(*) AS count
          FROM notes, json_each(notes.tags)
+         ${owner ? 'WHERE owner = ?' : ''}
          GROUP BY value
          ORDER BY count DESC, value ASC`,
     )
-    .all() as TagCount[];
+    .all(...(owner ? [owner] : [])) as TagCount[];
 }
 
-export function countNotes(): number {
-  const row = db.query('SELECT count(*) AS n FROM notes').get() as { n: number };
+export function countNotes(owner?: NoteOwner): number {
+  const row = (
+    owner
+      ? db.query('SELECT count(*) AS n FROM notes WHERE owner = ?').get(owner)
+      : db.query('SELECT count(*) AS n FROM notes').get()
+  ) as { n: number };
+
   return row.n;
 }
 

@@ -5,8 +5,8 @@
  * Токен и креды берутся ТОЛЬКО из окружения — запускать через
  * `sec run notes -- bun publish.ts …`, чтобы значения не попали в argv и вывод.
  *
- *   NOTES_ADMIN_TOKEN — правит и удаляет любую заметку, видит листинг (--list)
- *   NOTES_READ_TOKEN  — читает страницы и raw, публикует и правит только свои
+ *   NOTES_ADMIN_TOKEN — правит и удаляет любую заметку, в --list видит все
+ *   NOTES_READ_TOKEN  — читает страницы и raw, публикует, правит и видит в --list свои
  *
  * Берётся админский, если он есть в окружении: под ним доступно всё. Read-токен
  * остаётся рабочим вариантом для агента, которому листинг чужих заметок не нужен.
@@ -118,16 +118,19 @@ if (options.remove) {
 }
 
 if (options.list !== undefined) {
-  const token = process.env.NOTES_ADMIN_TOKEN;
-  if (!token) fail('для --list нужен NOTES_ADMIN_TOKEN: листинг read-токену закрыт');
-
   const url = `${options.host}/api/notes?q=${encodeURIComponent(options.list)}`;
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
+  const res = await fetch(url, { headers: { authorization: `Bearer ${requireToken()}` } });
   if (!res.ok) fail(`список не получен: HTTP ${res.status}`);
 
   const data = (await res.json()) as {
+    role: 'admin' | 'read';
     notes: { uuid: string; title: string; updated_at: string }[];
   };
+  // Под read-токеном пусто ≠ «на сервере ничего нет»: он видит только свои
+  // публикации, и молчаливый пустой вывод читался бы как отсутствие заметки
+  if (data.role === 'read') {
+    console.log('# read-токен: только заметки, опубликованные им');
+  }
   for (const note of data.notes) {
     console.log(`${note.uuid}  ${note.updated_at.slice(0, 10)}  ${note.title}`);
   }

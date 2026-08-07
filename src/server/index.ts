@@ -66,28 +66,23 @@ function roleOf(c: Context<Env>): NoteOwner | null {
   return null;
 }
 
-/** Гейт: `admin` — только админский токен, `read` — любой из двух. */
-function guard(need: NoteOwner): MiddlewareHandler<Env> {
-  return async (c, next) => {
-    const role = roleOf(c);
+/** Гейт: внутрь пускает любой из двух токенов, дальше решает роль из контекста. */
+const guardToken: MiddlewareHandler<Env> = async (c, next) => {
+  const role = roleOf(c);
 
-    if (role === 'admin' || (need === 'read' && role === 'read')) {
-      c.set('role', role);
-      return next();
-    }
+  if (role) {
+    c.set('role', role);
+    return next();
+  }
 
-    // Браузеру — форма, всем остальным — честный 401. Различаем по Accept:
-    // агент за markdown'ом не должен получить HTML вместо ошибки
-    if (c.req.method === 'GET' && (c.req.header('accept') ?? '').includes('text/html')) {
-      return c.html(renderGate(SITE_NAME, c.req.path, role !== null), 401);
-    }
+  // Браузеру — форма, всем остальным — честный 401. Различаем по Accept:
+  // агент за markdown'ом не должен получить HTML вместо ошибки
+  if (c.req.method === 'GET' && (c.req.header('accept') ?? '').includes('text/html')) {
+    return c.html(renderGate(SITE_NAME, c.req.path, false), 401);
+  }
 
-    return c.json({ error: role === null ? 'нужен токен' : 'недостаточно прав' }, 401);
-  };
-}
-
-const guardRead = guard('read');
-const guardAdmin = guard('admin');
+  return c.json({ error: 'нужен токен' }, 401);
+};
 
 app.get('/healthz', (c) => c.json({ ok: true, notes: countNotes() }));
 
@@ -132,7 +127,7 @@ function ownerForWrite(c: Context<Env>, uuid: string): NoteOwner | null {
 
 // --- публикация (Bearer) -----------------------------------------------------
 
-app.post('/api/notes', guardRead, async (c) => {
+app.post('/api/notes', guardToken, async (c) => {
   const payload = (await c.req.json()) as {
     uuid?: string;
     title?: string;
@@ -173,7 +168,7 @@ app.post('/api/notes', guardRead, async (c) => {
   });
 });
 
-app.delete('/api/notes/:uuid', guardRead, (c) => {
+app.delete('/api/notes/:uuid', guardToken, (c) => {
   const uuid = c.req.param('uuid');
   if (!ownerForWrite(c, uuid)) {
     return c.json({ error: 'заметка чужая: read-токен удаляет только свои' }, 403);
@@ -183,20 +178,26 @@ app.delete('/api/notes/:uuid', guardRead, (c) => {
   return removed ? c.json({ ok: true }) : c.json({ error: 'не найдено' }, 404);
 });
 
-// --- индекс и поиск (только admin) -------------------------------------------
+// --- индекс и поиск ----------------------------------------------------------
 
-app.get('/api/notes', guardAdmin, (c) =>
-  c.json({
+// Индекс открыт обоим токенам, но read видит в нём только свои публикации:
+// иначе листинг раздал бы uuid чужих заметок, а страницы у нас читает любой токен.
+app.get('/api/notes', guardToken, (c) => {
+  const role = c.get('role');
+  const scope = role === 'admin' ? undefined : role;
+
+  return c.json({
     site: SITE_NAME,
-    total: countNotes(),
-    tags: listTags(),
-    notes: listNotes(c.req.query('q') ?? '', c.req.queries('tag') ?? []),
-  }),
-);
+    role,
+    total: countNotes(scope),
+    tags: listTags(scope),
+    notes: listNotes(c.req.query('q') ?? '', c.req.queries('tag') ?? [], scope),
+  });
+});
 
 // --- редактор в браузере -----------------------------------------------------
 
-app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardRead, (c) => {
+app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, (c) => {
   const note = getNote(c.req.param('uuid'));
   if (!note) return c.json({ error: 'не найдено' }, 404);
 
@@ -210,7 +211,7 @@ app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardRead, (c) => {
   });
 });
 
-app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardRead, async (c) => {
+app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, async (c) => {
   const existing = getNote(c.req.param('uuid'));
   if (!existing) return c.json({ error: 'не найдено' }, 404);
 
@@ -240,14 +241,14 @@ app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardRead, async (c) => {
 
 // --- страницы заметок (оба токена) -------------------------------------------
 
-app.get('/:uuid{[0-9a-fA-F-]{36}}', guardRead, (c) => {
+app.get('/:uuid{[0-9a-fA-F-]{36}}', guardToken, (c) => {
   const note = getNote(c.req.param('uuid'));
   if (!note) return c.html(renderNotFound(SITE_NAME), 404);
 
   return c.html(renderNotePage(note, SITE_NAME));
 });
 
-app.get('/:uuid{[0-9a-fA-F-]{36}}/raw', guardRead, (c) => {
+app.get('/:uuid{[0-9a-fA-F-]{36}}/raw', guardToken, (c) => {
   const note = getNote(c.req.param('uuid'));
   if (!note) return c.text('not found', 404);
 
@@ -260,12 +261,12 @@ app.get('/:uuid{[0-9a-fA-F-]{36}}/raw', guardRead, (c) => {
 app.use('/vendor/*', serveStatic({ root: './dist/web' }));
 app.use('/assets/*', serveStatic({ root: './dist/web' }));
 app.use('/favicon.svg', serveStatic({ root: './dist/web' }));
-app.get('/', guardAdmin, serveStatic({ path: './dist/web/index.html' }));
+app.get('/', guardToken, serveStatic({ path: './dist/web/index.html' }));
 // Редактор — та же SPA, маршрут разбирает фронт по pathname. Гейт здесь только
 // на вход: правку по существу решает PUT, который сверяет владельца заметки.
 app.get(
   '/:uuid{[0-9a-fA-F-]{36}}/edit',
-  guardRead,
+  guardToken,
   serveStatic({ path: './dist/web/index.html' }),
 );
 
