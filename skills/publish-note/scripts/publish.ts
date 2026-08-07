@@ -5,8 +5,11 @@
  * Токен и креды берутся ТОЛЬКО из окружения — запускать через
  * `sec run notes -- bun publish.ts …`, чтобы значения не попали в argv и вывод.
  *
- *   NOTES_PUBLISH_TOKEN  — bearer для публикации и удаления
- *   NOTES_USER/NOTES_PASSWORD — basic-auth, нужен только для --list
+ *   NOTES_ADMIN_TOKEN — правит и удаляет любую заметку, видит листинг (--list)
+ *   NOTES_READ_TOKEN  — читает страницы и raw, публикует и правит только свои
+ *
+ * Берётся админский, если он есть в окружении: под ним доступно всё. Read-токен
+ * остаётся рабочим вариантом для агента, которому листинг чужих заметок не нужен.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
@@ -74,9 +77,9 @@ function fail(message: string): never {
 }
 
 function requireToken(): string {
-  const token = process.env.NOTES_PUBLISH_TOKEN;
+  const token = process.env.NOTES_ADMIN_TOKEN || process.env.NOTES_READ_TOKEN;
   if (!token) {
-    fail('нет NOTES_PUBLISH_TOKEN — запусти через `sec run notes -- bun …`');
+    fail('нет NOTES_ADMIN_TOKEN/NOTES_READ_TOKEN — запусти через `sec run notes -- bun …`');
   }
   return token;
 }
@@ -115,14 +118,11 @@ if (options.remove) {
 }
 
 if (options.list !== undefined) {
-  const user = process.env.NOTES_USER;
-  const password = process.env.NOTES_PASSWORD;
-  if (!user || !password) fail('для --list нужны NOTES_USER и NOTES_PASSWORD');
+  const token = process.env.NOTES_ADMIN_TOKEN;
+  if (!token) fail('для --list нужен NOTES_ADMIN_TOKEN: листинг read-токену закрыт');
 
   const url = `${options.host}/api/notes?q=${encodeURIComponent(options.list)}`;
-  const res = await fetch(url, {
-    headers: { authorization: `Basic ${btoa(`${user}:${password}`)}` },
-  });
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` } });
   if (!res.ok) fail(`список не получен: HTTP ${res.status}`);
 
   const data = (await res.json()) as {

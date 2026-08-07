@@ -113,6 +113,7 @@ for (const sample of SAMPLES) {
     toc: JSON.stringify(rendered.toc),
     plain: rendered.plain,
     tags: data.tags ?? sample.tags,
+    owner: 'admin',
   });
 
   console.log(`+ ${sample.uuid}  ${rendered.title}`);

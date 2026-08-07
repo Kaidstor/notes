@@ -283,6 +283,14 @@ footer.doc a:hover { color: var(--fg); }
 }
 .empty h1 { font-size: 20px; color: var(--fg-strong); margin: 0 0 8px; font-weight: 600; }
 .empty p { color: var(--faint); font-size: 13px; margin: 0; }
+.gate { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
+.gate input {
+  flex: 1; max-width: 320px; padding: 7px 10px; font: inherit; font-size: 13px;
+  color: var(--fg-strong); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 7px; outline: none;
+}
+.gate input:focus { border-color: var(--border-strong); }
+.gate button { cursor: pointer; background: var(--panel-2); font: inherit; font-size: 13px; }
 `;
 
 /** Подсветка активного пункта оглавления по мере прокрутки. */
@@ -783,6 +791,23 @@ ${note.html}
   <a href="/${note.uuid}/raw">исходник</a>
 </footer>`,
     note.html.includes('class="mermaid"'),
+  );
+}
+
+export function renderGate(siteName: string, next: string, wrong: boolean): string {
+  return shell(
+    siteName,
+    `<div class="empty">
+  <h1>${escapeHtml(siteName)}</h1>
+  <p>${wrong ? 'Токен не подошёл.' : 'Страница закрыта. Введите токен доступа.'}</p>
+  <form class="gate" method="post" action="/auth">
+    <input type="hidden" name="next" value="${escapeHtml(next)}">
+    <input type="password" name="token" autocomplete="current-password" autofocus
+           placeholder="токен доступа" spellcheck="false">
+    <button class="chip" type="submit">Войти</button>
+  </form>
+  <p style="margin-top:14px">Токен запоминается в этом браузере на год.</p>
+</div>`,
   );
 }
 

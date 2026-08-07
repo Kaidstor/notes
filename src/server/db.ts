@@ -2,6 +2,9 @@ import { Database } from 'bun:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+/** Роль токена, которым заметка создана. Заметки до появления ролей — admin. */
+export type NoteOwner = 'admin' | 'read';
+
 export interface NoteRow {
   uuid: string;
   title: string;
@@ -10,6 +13,7 @@ export interface NoteRow {
   toc: string;
   plain: string;
   tags: string;
+  owner: NoteOwner;
   created_at: string;
   updated_at: string;
 }
@@ -44,11 +48,18 @@ db.exec(`
     plain      TEXT NOT NULL,
     search     TEXT NOT NULL,
     tags       TEXT NOT NULL DEFAULT '[]',
+    owner      TEXT NOT NULL DEFAULT 'admin',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS notes_updated_at ON notes(updated_at DESC);
 `);
+
+// Заметки, созданные до появления ролей, остаются за admin: дефолт колонки
+// закрывает и уже лежащие строки, поэтому отдельного UPDATE не нужно.
+if (!db.query('PRAGMA table_info(notes)').all().some((c) => (c as { name: string }).name === 'owner')) {
+  db.exec("ALTER TABLE notes ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'");
+}
 
 export function upsertNote(note: {
   uuid: string;
@@ -58,6 +69,7 @@ export function upsertNote(note: {
   toc: string;
   plain: string;
   tags: string[];
+  owner: NoteOwner;
 }): NoteRow {
   const now = new Date().toISOString();
   // search — заранее приведённая к нижнему регистру копия: LIKE в SQLite
@@ -65,9 +77,12 @@ export function upsertNote(note: {
   // Теги входят в индекс: по ним ищут сервисные заметки (`--list hidden-domains`).
   const search = `${note.title}\n${note.tags.join(' ')}\n${note.plain}`.toLowerCase();
 
+  // owner проставляется только при вставке: правка чужой ролью (admin по
+  // заметке read) не должна переписывать владельца — иначе автор потеряет
+  // доступ к собственной заметке после первой же admin-правки
   db.query(
-    `INSERT INTO notes (uuid, title, markdown, html, toc, plain, search, tags, created_at, updated_at)
-     VALUES ($uuid, $title, $markdown, $html, $toc, $plain, $search, $tags, $now, $now)
+    `INSERT INTO notes (uuid, title, markdown, html, toc, plain, search, tags, owner, created_at, updated_at)
+     VALUES ($uuid, $title, $markdown, $html, $toc, $plain, $search, $tags, $owner, $now, $now)
      ON CONFLICT(uuid) DO UPDATE SET
        title = $title, markdown = $markdown, html = $html, toc = $toc,
        plain = $plain, search = $search, tags = $tags, updated_at = $now`,
@@ -80,6 +95,7 @@ export function upsertNote(note: {
     $plain: note.plain,
     $search: search,
     $tags: JSON.stringify(note.tags),
+    $owner: note.owner,
     $now: now,
   });
 
