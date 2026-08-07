@@ -38,16 +38,22 @@ bun dist/server.js     # то же, но из бандла — так же, ка
 
 | Метод | Путь | Доступ | Что делает |
 | --- | --- | --- | --- |
-| `GET` | `/` | basic | SPA: список и поиск |
-| `GET` | `/api/notes?q=` | basic | Поиск по заголовку, тегам и тексту |
-| `POST` | `/api/notes` | bearer | Публикация/обновление: `{markdown, title?, uuid?, tags?}` |
-| `DELETE` | `/api/notes/:uuid` | bearer | Удаление |
-| `GET` | `/api/notes/:uuid` | basic | Заметка для редактора: markdown, теги |
-| `PUT` | `/api/notes/:uuid` | basic | Сохранение из редактора: `{markdown}` |
-| `GET` | `/{uuid}` | публично | Страница заметки |
-| `GET` | `/{uuid}/raw` | публично | Исходный markdown |
-| `GET` | `/{uuid}/edit` | basic | Редактор с подсветкой markdown |
-| `GET` | `/healthz` | публично | Живость + число заметок |
+| `GET` | `/` | admin | SPA: список и поиск |
+| `GET` | `/api/notes?q=` | admin | Поиск по заголовку, тегам и тексту |
+| `POST` | `/api/notes` | read* | Публикация/обновление: `{markdown, title?, uuid?, tags?}` |
+| `DELETE` | `/api/notes/:uuid` | read* | Удаление |
+| `GET` | `/api/notes/:uuid` | read | Заметка для редактора: markdown, теги |
+| `PUT` | `/api/notes/:uuid` | read* | Сохранение из редактора: `{markdown}` |
+| `GET` | `/{uuid}` | read | Страница заметки |
+| `GET` | `/{uuid}/raw` | read | Исходный markdown |
+| `GET` | `/{uuid}/edit` | read | Редактор с подсветкой markdown |
+| `POST` | `/auth` | — | Обмен токена на cookie (форма входа) |
+| `GET` | `/robots.txt` | — | `Disallow: /` |
+| `GET` | `/healthz` | — | Живость + число заметок |
+
+`read` — годится любой из двух токенов, `admin` — только админский. Звёздочка: read-токен
+меняет лишь заметки, которые сам и создал, admin — любые. Токен принимается заголовком
+`Authorization: Bearer` или cookie `notes_token`; в query — намеренно нет.
 
 Заголовок берётся из frontmatter (`title:`), иначе из первого `# H1` — H1 при этом
 убирается из тела, его рисует шапка страницы. `uuid:` во frontmatter делает повторную
@@ -55,7 +61,8 @@ bun dist/server.js     # то же, но из бандла — так же, ка
 
 Теги индексируются вместе с текстом, поэтому сервисные заметки помечаются именем
 сервиса (`hidden-domains`, `whois`) и находятся запросом по этому имени. `/{uuid}/raw`
-отдаёт исходный markdown без авторизации — это то, чем читает опубликованное агент.
+отдаёт исходный markdown — это то, чем читает опубликованное агент, но уже с токеном
+в заголовке.
 
 ## Что доступно в markdown
 
