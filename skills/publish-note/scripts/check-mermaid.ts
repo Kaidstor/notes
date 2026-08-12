@@ -24,11 +24,19 @@ const mermaid = (await import('mermaid')).default;
 const { readFileSync } = await import('node:fs');
 
 /**
- * Отказ happy-dom, а не поломка схемы: воспроизводится на ромбовидном узле с
- * подписанным ребром, в браузере такие схемы рисуются. Гасим до предупреждения,
- * иначе ложный отказ неотличим от настоящего по коду возврата.
+ * Отказы happy-dom, а не поломка схемы — в браузере такие схемы рисуются.
+ * Гасим до предупреждения, иначе ложный отказ неотличим от настоящего по коду
+ * возврата. Оба случая наступают уже ПОСЛЕ успешного parse, так что синтаксис
+ * к этому моменту проверен:
+ *  - «suitable point» — ромбовидный узел с подписанным ребром во flowchart;
+ *  - «svg element not in render tree» — любой sequenceDiagram: happy-dom не
+ *    держит svg в render tree, реальные ошибки синтаксиса приходят раньше и
+ *    с другим текстом.
  */
-const HAPPY_DOM_LIMITATION = 'Could not find a suitable point for the given distance';
+const HAPPY_DOM_LIMITATIONS = [
+  'Could not find a suitable point for the given distance',
+  'svg element not in render tree',
+];
 
 const files = process.argv.slice(2);
 
@@ -65,10 +73,10 @@ for (const file of files) {
         '\n',
       )[0];
 
-      if (message.includes(HAPPY_DOM_LIMITATION)) {
+      if (HAPPY_DOM_LIMITATIONS.some((limitation) => message.includes(limitation))) {
         warned++;
         console.log(
-          `${label}: предупреждение — ограничение happy-dom, а не схемы; посмотреть страницу глазами через --local`,
+          `${label}: предупреждение — ограничение happy-dom, а не схемы; посмотреть опубликованную страницу глазами`,
         );
         continue;
       }
