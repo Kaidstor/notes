@@ -1,9 +1,9 @@
 ---
-name: publish-note
-description: Публикация markdown-заметки на notes.kaidstor.ru — страница получает адрес {домен}/{uuid} и вёрстку в стиле приложения sql-kai (zinc-палитра, sky-акцент, врезки .note/.warn/.ok, схемы mermaid с зумом, авто-тема). Использовать когда пользователь просит «опубликуй заметку», «выложи документ/доку», «залей на notes», «сделай страницу со ссылкой», «обнови опубликованную заметку», «покажи что опубликовано», «удали заметку», нужна страница со схемой/диаграммой mermaid, а также когда по итогам работы получился .md-документ и нужна шарибельная ссылка на него.
+name: html-note
+description: Публикация markdown-заметки на notes.kaidstor.ru — страница получает адрес {домен}/{uuid} и вёрстку в стиле приложения sql-kai (zinc-палитра, sky-акцент, врезки .note/.warn/.ok, карточки, схемы mermaid с зумом, авто-тема). Использовать когда пользователь просит «опубликуй заметку», «выложи документ/доку», «залей на notes», «сделай страницу со ссылкой», «обнови опубликованную заметку», «покажи что опубликовано», «удали заметку», нужна страница со схемой/диаграммой mermaid, а также когда по итогам работы получился .md-документ и нужна шарибельная ссылка на него. Сюда же — объяснение планов, концепций, архитектуры и результатов анализа: когда ответ не влезает в чат, содержит таблицы, схемы и разбор вариантов, оформить его страницей с врезками и mermaid-схемами и отдать ссылку («объясни план», «покажи, как это будет устроено», «оформи предложение», «разбор с диаграммами»).
 ---
 
-# publish-note
+# html-note
 
 Заметка = markdown-файл. Скрипт отправляет его POST-запросом на сервис
 [notes](https://notes.kaidstor.ru) (репозиторий `~/Projects/own/notes`), сервер рендерит
@@ -31,7 +31,7 @@ description: Публикация markdown-заметки на notes.kaidstor.ru
    Проставь теги по соглашению ниже — без них заметку потом не найти.
 2. **Проверь схемы, если в заметке есть mermaid:**
    ```bash
-   cd ~/Projects/own/notes && bun skills/publish-note/scripts/check-mermaid.ts путь/к/note.md
+   cd ~/Projects/own/notes && bun skills/html-note/scripts/check-mermaid.ts путь/к/note.md
    ```
    Скрипт достаёт из markdown все mermaid-блоки и гоняет каждый через настоящий `render`,
    печатая `ok`, `предупреждение` либо `ОШИБКА` с первой строкой сообщения. Запускать из
@@ -46,7 +46,7 @@ description: Публикация markdown-заметки на notes.kaidstor.ru
    предупреждение — публикуй и посмотри опубликованную страницу глазами.
 3. **Опубликуй:**
    ```bash
-   sec run notes -- bun ~/.claude/skills/publish-note/scripts/publish.ts путь/к/note.md --pin
+   sec run notes -- bun ~/.claude/skills/html-note/scripts/publish.ts путь/к/note.md --pin
    ```
    В stdout — только URL (удобно копировать), в stderr — заголовок и uuid.
    Черновик на проде — не проблема: страница за токеном, а повторная публикация
@@ -125,7 +125,7 @@ tags: hidden-domains, recon
 ```bash
 # все заметки сервиса → исходники (одним sec run: токен нужен обеим командам)
 sec run notes -- sh -c '
-  bun ~/.claude/skills/publish-note/scripts/publish.ts --list hidden-domains \
+  bun ~/.claude/skills/html-note/scripts/publish.ts --list hidden-domains \
     | cut -d" " -f1 \
     | xargs -I{} curl -s -H "authorization: Bearer $NOTES_READ_TOKEN" \
         https://notes.kaidstor.ru/{}/raw'

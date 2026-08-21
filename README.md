@@ -14,7 +14,7 @@ sql-kai и живёт по адресу `{домен}/{uuid}`. Открытог�
 `.claude/skills/deploy-notes` (changelog → сборка → `./deploy.sh` → проверка → коммит).
 
 Скилл публикации заметок нужен из любого проекта, поэтому он глобальный, но живёт здесь:
-`~/.claude/skills/publish-note` — симлинк на `skills/publish-note`, копии нет.
+`~/.claude/skills/html-note` — симлинк на `skills/html-note`, копии нет.
 
 ## Локально
 
@@ -110,9 +110,9 @@ docker-образ, внутри которого лежит один `dist`: б�
 (`exposedByDefault: false`, сеть `vpn`). Общий `/app/traefik/dynamic.yml`, от которого
 зависят остальные сайты, деплой не редактирует.
 
-## Скилл publish-note
+## Скилл html-note
 
-В репозитории есть скилл `publish-note` ([skills/publish-note/SKILL.md](skills/publish-note/SKILL.md))
+В репозитории есть скилл `html-note` ([skills/html-note/SKILL.md](skills/html-note/SKILL.md))
 по спецификации [Agent Skills](https://agentskills.io) — инструкции агенту, как публиковать
 markdown на этот сервис: сборка заметки, теги, `--pin` для обновляемых страниц, чтение
 опубликованного через `/{uuid}/raw`.
@@ -120,13 +120,13 @@ markdown на этот сервис: сборка заметки, теги, `--p
 Установка (CLI сам спросит, в какого агента и куда — в проект или глобально):
 
 ```bash
-npx skills add https://github.com/Kaidstor/notes --skill publish-note
+npx skills add https://github.com/Kaidstor/notes --skill html-note
 ```
 
 Или руками — скилл это просто папка:
 
 ```bash
-cp -R skills/publish-note ~/.claude/skills/
+cp -R skills/html-note ~/.claude/skills/
 ```
 
 ### Настройка
@@ -143,7 +143,7 @@ cp -R skills/publish-note ~/.claude/skills/
 но подойдёт любой способ доставить переменные в окружение:
 
 ```bash
-sec run notes -- bun ~/.claude/skills/publish-note/scripts/publish.ts docs/note.md --pin
+sec run notes -- bun ~/.claude/skills/html-note/scripts/publish.ts docs/note.md --pin
 ```
 
 Адрес сервиса по умолчанию — `https://notes.kaidstor.ru` (`DEFAULT_HOST` в publish.ts);
