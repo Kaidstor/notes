@@ -277,7 +277,7 @@ function shareJson(share: ShareRow) {
 
 // Выдать ссылку может любая роль: страницу под токеном и так читают обе.
 app.post('/api/notes/:uuid{[0-9a-fA-F-]{36}}/shares', guardToken, async (c) => {
-  const payload = (await c.req.json().catch(() => ({}))) as { ttl?: unknown };
+  const payload: unknown = await c.req.json().catch(() => null);
 
   // Ниже ни одного await: bun:sqlite синхронный, и между getNote и INSERT
   // чужой обработчик (DELETE заметки) вклиниться не может. С await до проверки
@@ -285,8 +285,16 @@ app.post('/api/notes/:uuid{[0-9a-fA-F-]{36}}/shares', guardToken, async (c) => {
   const note = getNote(c.req.param('uuid'));
   if (!note) return c.json({ error: 'не найдено' }, 404);
 
-  const ttl = Number(payload.ttl);
-  if (!Number.isInteger(ttl) || ttl < SHARE_TTL_MIN || ttl > SHARE_TTL_MAX) {
+  const ttl =
+    payload !== null && typeof payload === 'object' && !Array.isArray(payload)
+      ? (payload as { ttl?: unknown }).ttl
+      : undefined;
+  if (
+    typeof ttl !== 'number' ||
+    !Number.isInteger(ttl) ||
+    ttl < SHARE_TTL_MIN ||
+    ttl > SHARE_TTL_MAX
+  ) {
     return c.json(
       { error: `ttl — целое число секунд от ${SHARE_TTL_MIN} до ${SHARE_TTL_MAX} (7 суток)` },
       400,
