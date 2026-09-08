@@ -63,7 +63,7 @@ body {
 }
 .topbar-inner {
   max-width: var(--page); margin: 0 auto; padding: 10px 24px;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
   font-size: 12px;
 }
 .brand { color: var(--faint); font-family: var(--mono); font-size: 12px; text-decoration: none; }
@@ -75,7 +75,10 @@ body {
   padding: 2px 8px; font-size: 11px; color: var(--muted);
   text-decoration: none; background: var(--panel);
 }
-a.chip:hover { border-color: var(--border-strong); color: var(--fg-strong); }
+a.chip:hover, button.chip:hover { border-color: var(--border-strong); color: var(--fg-strong); }
+button.chip { cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
+button.chip:disabled { opacity: 0.5; cursor: default; }
+.chip.danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
 .wrap {
   max-width: var(--page); margin: 0 auto; padding: 40px 24px 96px;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px;
@@ -417,6 +420,30 @@ const CODEBAR = `
 })();
 `;
 
+/** Чип «удалить» в шапке: подтверждение, DELETE с cookie, переход к списку. */
+const DELETE_CHIP = `
+(() => {
+  const btn = document.querySelector('button[data-act="delete"]');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    if (!confirm('Удалить заметку «' + btn.dataset.title + '»? Отменить будет нельзя.')) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/notes/' + btn.dataset.uuid, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'HTTP ' + res.status);
+      }
+      location.href = '/';
+    } catch (e) {
+      alert('Не удалилось: ' + e.message);
+      btn.disabled = false;
+    }
+  });
+})();
+`;
+
 /** Отрисовка ```mermaid-блоков. Бандл грузится динамически и только на страницах,
  *  где схема есть: он тяжелее всей остальной страницы вместе взятой. */
 const MERMAID = `
@@ -717,7 +744,7 @@ function formatDate(iso: string): string {
   return dateFmt.format(new Date(iso));
 }
 
-function shell(title: string, body: string, withMermaid = false): string {
+function shell(title: string, body: string, scripts: string[] = []): string {
   return `<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -731,7 +758,7 @@ function shell(title: string, body: string, withMermaid = false): string {
 ${body}
 <script>${SCROLLSPY}</script>
 <script>${CODEBAR}</script>
-${withMermaid ? `<script>${MERMAID}</script>` : ''}
+${scripts.map((script) => `<script>${script}</script>`).join('\n')}
 </body>
 </html>`;
 }
@@ -757,6 +784,9 @@ export function renderNotePage(note: NoteRow, siteName: string): string {
       ? `<span class="dot">·</span><span>обновлено ${formatDate(note.updated_at)}</span>`
       : '';
 
+  const scripts = [DELETE_CHIP];
+  if (note.html.includes('class="mermaid"')) scripts.push(MERMAID);
+
   return shell(
     note.title,
     `<div class="topbar">
@@ -765,6 +795,7 @@ export function renderNotePage(note: NoteRow, siteName: string): string {
     <span class="spacer"></span>
     <a class="chip" href="/${note.uuid}/edit">править</a>
     <a class="chip" href="/${note.uuid}/raw">markdown</a>
+    <button class="chip danger" type="button" data-act="delete" data-uuid="${note.uuid}" data-title="${escapeHtml(note.title)}">удалить</button>
   </div>
 </div>
 <div class="wrap">
@@ -790,7 +821,7 @@ ${note.html}
   <span>·</span>
   <a href="/${note.uuid}/raw">исходник</a>
 </footer>`,
-    note.html.includes('class="mermaid"'),
+    scripts,
   );
 }
 
