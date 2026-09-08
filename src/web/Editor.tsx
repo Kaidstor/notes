@@ -58,7 +58,7 @@ export default function Editor({ uuid }: { uuid: string }) {
   }, [note]);
 
   const save = useCallback(async () => {
-    if (!dirty || saving) return;
+    if (!dirty || saving || removing) return;
     setSaving(true);
     setSaveError('');
     try {
@@ -79,7 +79,7 @@ export default function Editor({ uuid }: { uuid: string }) {
     } finally {
       setSaving(false);
     }
-  }, [dirty, saving, text, uuid]);
+  }, [dirty, saving, removing, text, uuid]);
 
   useEffect(() => {
     // e.code, а не e.key: на русской раскладке Cmd+S приходит как «ы».
@@ -94,7 +94,7 @@ export default function Editor({ uuid }: { uuid: string }) {
   }, [save]);
 
   const remove = useCallback(async () => {
-    if (!note || removing) return;
+    if (!note || removing || saving) return;
     if (!confirm(`Удалить заметку «${note.title}»? Отменить будет нельзя.`)) return;
     setRemoving(true);
     setSaveError('');
@@ -110,7 +110,7 @@ export default function Editor({ uuid }: { uuid: string }) {
       setSaveError((err as Error).message);
       setRemoving(false);
     }
-  }, [note, removing, uuid]);
+  }, [note, removing, saving, uuid]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -170,7 +170,7 @@ export default function Editor({ uuid }: { uuid: string }) {
           <button
             type="button"
             onClick={() => void remove()}
-            disabled={!note || removing}
+            disabled={!note || saving || removing}
             className="shrink-0 rounded-md border border-zinc-800 px-3 py-1 text-[12px] text-zinc-500 transition-colors hover:border-red-900 hover:text-red-400 disabled:cursor-default disabled:text-zinc-700 disabled:hover:border-zinc-800"
           >
             {removing ? 'Удаляю…' : 'Удалить'}
@@ -178,7 +178,7 @@ export default function Editor({ uuid }: { uuid: string }) {
           <button
             type="button"
             onClick={() => void save()}
-            disabled={!dirty || saving}
+            disabled={!dirty || saving || removing}
             className="shrink-0 rounded-md border border-sky-700 bg-sky-500/15 px-3 py-1 text-[12px] text-sky-300 transition-colors hover:bg-sky-500/25 disabled:cursor-default disabled:border-zinc-800 disabled:bg-transparent disabled:text-zinc-600"
           >
             {saving ? 'Сохраняю…' : 'Сохранить'}

@@ -227,13 +227,16 @@ app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, (c) => {
 });
 
 app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, async (c) => {
+  const payload = (await c.req.json()) as { markdown?: string };
+
+  // Ниже ни одного await: иначе между проверкой и upsert заметку успевают
+  // удалить, а ON CONFLICT воскрешает её вместе с прежним uuid.
   const existing = getNote(c.req.param('uuid'));
   if (!existing) return c.json({ error: 'не найдено' }, 404);
 
   const owner = ownerForWrite(c, existing.uuid);
   if (!owner) return c.json({ error: 'заметка чужая: read-токен правит только свои' }, 403);
 
-  const payload = (await c.req.json()) as { markdown?: string };
   if (!payload.markdown?.trim()) return c.json({ error: 'markdown обязателен' }, 400);
 
   const { data, body } = parseFrontmatter(payload.markdown);
