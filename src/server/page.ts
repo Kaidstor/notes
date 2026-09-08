@@ -48,6 +48,9 @@ const CSS = `
   }
 }
 * { box-sizing: border-box; }
+/* Свой display у блока (flex) перебивает UA-правило для hidden: без !important
+   скрытая строка панели всё равно рисуется. */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -78,7 +81,38 @@ body {
 a.chip:hover, button.chip:hover { border-color: var(--border-strong); color: var(--fg-strong); }
 button.chip { cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
 button.chip:disabled { opacity: 0.5; cursor: default; }
+.chip[aria-expanded="true"] {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
 .chip.danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+/* Панель выдачи ссылок раскрывается под шапкой и липнет вместе с ней; фон
+   непрозрачный, иначе сквозь неё просвечивает текст статьи. */
+.share-panel { border-top: 1px solid var(--border); background: var(--panel); }
+.share-inner {
+  max-width: var(--page); margin: 0 auto; padding: 10px 24px;
+  display: flex; flex-direction: column; gap: 8px; font-size: 12px;
+}
+.share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.share-hint { color: var(--faint); }
+.share-status { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.share-status.bad { color: var(--red); }
+.share-url {
+  flex: 1; min-width: 220px; padding: 3px 8px; font: inherit; font-family: var(--mono);
+  font-size: 11.5px; color: var(--fg-strong); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 6px; outline: none;
+}
+.share-url:focus { border-color: var(--border-strong); }
+.share-exp { font-family: var(--mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+.share-list {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px;
+  max-height: 150px; overflow-y: auto;
+}
+.share-list li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.share-list a {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); text-decoration: none;
+}
+.share-list a:hover { color: var(--fg-strong); }
 .wrap {
   max-width: var(--page); margin: 0 auto; padding: 40px 24px 96px;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px;
@@ -444,6 +478,142 @@ const DELETE_CHIP = `
 })();
 `;
 
+/** Панель «поделиться»: выдать ссылку на срок, скопировать, отозвать выданные. */
+const SHARE_PANEL = `
+(() => {
+  const toggle = document.querySelector('button[data-act="share"]');
+  const panel = document.getElementById('share-panel');
+  if (!toggle || !panel) return;
+
+  const uuid = panel.dataset.uuid;
+  const status = panel.querySelector('[data-role="status"]');
+  const result = panel.querySelector('[data-role="result"]');
+  const urlInput = panel.querySelector('[data-role="url"]');
+  const expiry = panel.querySelector('[data-role="expiry"]');
+  const list = panel.querySelector('[data-role="list"]');
+  const copyBtn = panel.querySelector('button[data-act="copy"]');
+
+  const fmt = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+  const till = (iso) => 'до ' + fmt.format(new Date(iso));
+
+  const say = (text, bad) => {
+    status.textContent = text;
+    status.classList.toggle('bad', Boolean(bad));
+  };
+
+  const api = async (path, init) => {
+    const res = await fetch(path, init);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
+    return body;
+  };
+
+  const chip = (label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = label;
+    return b;
+  };
+
+  const render = (shares) => {
+    list.replaceChildren();
+    for (const share of shares) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = share.url;
+      a.textContent = share.url.replace(/^https?:\\/\\//, '');
+      const exp = document.createElement('span');
+      exp.className = 'share-exp';
+      exp.textContent = till(share.expires_at);
+      const revoke = chip('отозвать');
+      revoke.addEventListener('click', async () => {
+        revoke.disabled = true;
+        try {
+          await api('/api/shares/' + share.token, { method: 'DELETE' });
+          if (urlInput.value === share.url) result.hidden = true;
+          await load();
+        } catch (e) {
+          say(e.message, true);
+          revoke.disabled = false;
+        }
+      });
+      li.append(a, exp, revoke);
+      list.append(li);
+    }
+    list.hidden = shares.length === 0;
+  };
+
+  const load = async () => {
+    try {
+      render((await api('/api/notes/' + uuid + '/shares')).shares);
+    } catch (e) {
+      say(e.message, true);
+    }
+  };
+
+  toggle.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) load();
+  });
+
+  for (const b of panel.querySelectorAll('button[data-ttl]')) {
+    b.addEventListener('click', async () => {
+      say('…');
+      try {
+        const share = await api('/api/notes/' + uuid + '/shares', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ttl: Number(b.dataset.ttl) }),
+        });
+        urlInput.value = share.url;
+        expiry.textContent = till(share.expires_at);
+        result.hidden = false;
+        say('');
+        urlInput.focus();
+        urlInput.select();
+        await load();
+      } catch (e) {
+        say(e.message, true);
+      }
+    });
+  }
+
+  let timer;
+  copyBtn.addEventListener('click', async () => {
+    let ok = false;
+    // Clipboard API есть только в защищённом контексте — на http остаётся execCommand.
+    try {
+      await navigator.clipboard.writeText(urlInput.value);
+      ok = true;
+    } catch (e) {
+      urlInput.focus();
+      urlInput.select();
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+    }
+    copyBtn.textContent = ok ? 'скопировано' : 'не вышло';
+    clearTimeout(timer);
+    timer = setTimeout(() => { copyBtn.textContent = 'копировать'; }, 1400);
+  });
+})();
+`;
+
+/** Срок ссылки в часовом поясе читателя: сервер отдаёт UTC. */
+const LOCALTIME = `
+(() => {
+  const fmt = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  for (const el of document.querySelectorAll('time[datetime]')) {
+    el.textContent = fmt.format(new Date(el.getAttribute('datetime')));
+  }
+})();
+`;
+
 /** Отрисовка ```mermaid-блоков. Бандл грузится динамически и только на страницах,
  *  где схема есть: он тяжелее всей остальной страницы вместе взятой. */
 const MERMAID = `
@@ -739,6 +909,15 @@ const MERMAID = `
 `;
 
 const dateFmt = new Intl.DateTimeFormat('ru-RU', { day: '2-digit', month: 'short', year: 'numeric' });
+const dateTimeFmt = new Intl.DateTimeFormat('ru-RU', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  timeZone: 'UTC',
+  timeZoneName: 'short',
+});
 
 function formatDate(iso: string): string {
   return dateFmt.format(new Date(iso));
@@ -763,9 +942,15 @@ ${scripts.map((script) => `<script>${script}</script>`).join('\n')}
 </html>`;
 }
 
-export function renderNotePage(note: NoteRow, siteName: string): string {
+export interface NotePageOptions {
+  /** Страница открыта по временной ссылке: без правки, исходника и выхода на индекс. */
+  share?: { expiresAt: string };
+}
+
+export function renderNotePage(note: NoteRow, siteName: string, options: NotePageOptions = {}): string {
   const toc = JSON.parse(note.toc) as TocItem[];
   const tags = JSON.parse(note.tags) as string[];
+  const share = options.share;
 
   const tocHtml = toc.length
     ? `<nav class="toc">
@@ -784,19 +969,61 @@ export function renderNotePage(note: NoteRow, siteName: string): string {
       ? `<span class="dot">·</span><span>обновлено ${formatDate(note.updated_at)}</span>`
       : '';
 
-  const scripts = [DELETE_CHIP];
+  // Индекс за токеном: читателю по ссылке бренд оставляем текстом, чтобы не
+  // уводить его на форму входа.
+  const brand = share
+    ? `<span class="brand">${escapeHtml(siteName)}</span>`
+    : `<a class="brand" href="/">${escapeHtml(siteName)}</a>`;
+
+  const chips = share
+    ? ''
+    : `
+    <a class="chip" href="/${note.uuid}/edit">править</a>
+    <a class="chip" href="/${note.uuid}/raw">markdown</a>
+    <button class="chip" type="button" data-act="share" aria-expanded="false" aria-controls="share-panel">поделиться</button>
+    <button class="chip danger" type="button" data-act="delete" data-uuid="${note.uuid}" data-title="${escapeHtml(note.title)}">удалить</button>`;
+
+  const sharePanel = share
+    ? ''
+    : `
+  <div class="share-panel" id="share-panel" data-uuid="${note.uuid}" hidden>
+    <div class="share-inner">
+      <div class="share-row">
+        <span class="share-hint">Ссылка без токена на</span>
+        <button class="chip" type="button" data-ttl="3600">1 час</button>
+        <button class="chip" type="button" data-ttl="86400">1 день</button>
+        <button class="chip" type="button" data-ttl="604800">7 дней</button>
+        <span class="share-status" data-role="status"></span>
+      </div>
+      <div class="share-row" data-role="result" hidden>
+        <input class="share-url" type="text" readonly spellcheck="false" data-role="url">
+        <button class="chip" type="button" data-act="copy">копировать</button>
+        <span class="share-exp" data-role="expiry"></span>
+      </div>
+      <ul class="share-list" data-role="list" hidden></ul>
+    </div>
+  </div>`;
+
+  const ident = share
+    ? `<span>по ссылке до <time datetime="${share.expiresAt}">${dateTimeFmt.format(new Date(share.expiresAt))}</time></span>`
+    : `<span>${note.uuid}</span>`;
+
+  const footer = share
+    ? `<span>${escapeHtml(siteName)}</span>`
+    : `<a href="/">${escapeHtml(siteName)}</a>
+  <span>·</span>
+  <a href="/${note.uuid}/raw">исходник</a>`;
+
+  const scripts = share ? [LOCALTIME] : [DELETE_CHIP, SHARE_PANEL];
   if (note.html.includes('class="mermaid"')) scripts.push(MERMAID);
 
   return shell(
     note.title,
     `<div class="topbar">
   <div class="topbar-inner">
-    <a class="brand" href="/">${escapeHtml(siteName)}</a>
-    <span class="spacer"></span>
-    <a class="chip" href="/${note.uuid}/edit">править</a>
-    <a class="chip" href="/${note.uuid}/raw">markdown</a>
-    <button class="chip danger" type="button" data-act="delete" data-uuid="${note.uuid}" data-title="${escapeHtml(note.title)}">удалить</button>
-  </div>
+    ${brand}
+    <span class="spacer"></span>${chips}
+  </div>${sharePanel}
 </div>
 <div class="wrap">
   <div>
@@ -806,7 +1033,7 @@ export function renderNotePage(note: NoteRow, siteName: string): string {
         <span>${formatDate(note.created_at)}</span>
         ${updated}
         <span class="dot">·</span>
-        <span>${note.uuid}</span>
+        ${ident}
         ${tags.map((t) => `<span class="tag">${escapeHtml(t)}</span>`).join('')}
       </div>
     </header>
@@ -817,9 +1044,7 @@ ${note.html}
   ${tocHtml}
 </div>
 <footer class="doc">
-  <a href="/">${escapeHtml(siteName)}</a>
-  <span>·</span>
-  <a href="/${note.uuid}/raw">исходник</a>
+  ${footer}
 </footer>`,
     scripts,
   );
@@ -849,6 +1074,19 @@ export function renderNotFound(siteName: string): string {
   <h1>404</h1>
   <p>Такой заметки нет. Возможно, её удалили или ссылка неполная.</p>
   <p style="margin-top:16px"><a class="chip" href="/">${escapeHtml(siteName)}</a></p>
+</div>`,
+  );
+}
+
+/** Ответ на мёртвую временную ссылку. Без перехода на индекс: он за токеном,
+ *  а у читателя по ссылке токена нет. */
+export function renderShareGone(siteName: string): string {
+  return shell(
+    'Ссылка истекла',
+    `<div class="empty">
+  <h1>404</h1>
+  <p>Ссылка истекла или отозвана.</p>
+  <p style="margin-top:16px"><span class="brand">${escapeHtml(siteName)}</span></p>
 </div>`,
   );
 }

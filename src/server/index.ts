@@ -6,9 +6,21 @@ import { serveStatic } from 'hono/bun';
 import { getCookie, setCookie } from 'hono/cookie';
 import { logger } from 'hono/logger';
 
-import type { NoteOwner } from './db.ts';
-import { countNotes, deleteNote, getNote, listNotes, listTags, upsertNote } from './db.ts';
-import { renderGate, renderNotFound, renderNotePage } from './page.ts';
+import type { NoteOwner, ShareRow } from './db.ts';
+import {
+  countNotes,
+  createShare,
+  deleteNote,
+  getNote,
+  getShare,
+  listNotes,
+  listShares,
+  listTags,
+  revokeShare,
+  sweepExpiredShares,
+  upsertNote,
+} from './db.ts';
+import { renderGate, renderNotFound, renderNotePage, renderShareGone } from './page.ts';
 import { parseFrontmatter, renderMarkdown } from './render.ts';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -19,6 +31,9 @@ const READ_TOKEN = process.env.NOTES_READ_TOKEN;
 
 const COOKIE = 'notes_token';
 const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+
+const SHARE_TTL_MIN = 60;
+const SHARE_TTL_MAX = 60 * 60 * 24 * 7;
 
 if (process.env.NODE_ENV === 'production' && !(ADMIN_TOKEN && READ_TOKEN)) {
   throw new Error('NOTES_ADMIN_TOKEN и NOTES_READ_TOKEN обязательны при NODE_ENV=production');
@@ -239,6 +254,79 @@ app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, async (c) => {
   return c.json({ uuid: note.uuid, title: note.title, updated_at: note.updated_at });
 });
 
+// --- временные ссылки --------------------------------------------------------
+
+function shareJson(share: ShareRow) {
+  return {
+    token: share.token,
+    url: `${PUBLIC_URL}/s/${share.token}`,
+    created_by: share.created_by,
+    created_at: share.created_at,
+    expires_at: share.expires_at,
+  };
+}
+
+// Выдать ссылку может любая роль: страницу под токеном и так читают обе.
+app.post('/api/notes/:uuid{[0-9a-fA-F-]{36}}/shares', guardToken, async (c) => {
+  const note = getNote(c.req.param('uuid'));
+  if (!note) return c.json({ error: 'не найдено' }, 404);
+
+  const payload = (await c.req.json().catch(() => ({}))) as { ttl?: unknown };
+  const ttl = Number(payload.ttl);
+  if (!Number.isInteger(ttl) || ttl < SHARE_TTL_MIN || ttl > SHARE_TTL_MAX) {
+    return c.json(
+      { error: `ttl — целое число секунд от ${SHARE_TTL_MIN} до ${SHARE_TTL_MAX} (7 суток)` },
+      400,
+    );
+  }
+
+  return c.json(shareJson(createShare(note.uuid, c.get('role'), ttl)));
+});
+
+app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}/shares', guardToken, (c) => {
+  const note = getNote(c.req.param('uuid'));
+  if (!note) return c.json({ error: 'не найдено' }, 404);
+
+  const role = c.get('role');
+  const shares = listShares(note.uuid, role === 'admin' ? undefined : role);
+
+  return c.json({ shares: shares.map(shareJson) });
+});
+
+app.delete('/api/shares/:token{[A-Za-z0-9_-]{43}}', guardToken, (c) => {
+  const share = getShare(c.req.param('token'));
+  if (!share) return c.json({ error: 'не найдено' }, 404);
+
+  const role = c.get('role');
+  if (role !== 'admin' && share.created_by !== role) {
+    return c.json({ error: 'ссылка чужая: read-токен отзывает только свои' }, 403);
+  }
+
+  revokeShare(share.token);
+  return c.json({ ok: true });
+});
+
+// --- страница по временной ссылке (без гейта) --------------------------------
+
+// Единственный маршрут к заметке мимо guardToken: пропуском служит сам токен
+// ссылки. Стоит выше страниц заметок и SPA, чтобы никакой более общий шаблон
+// ниже не перехватил `/s/…` и не завернул читателя на форму входа.
+app.get('/s/:token{[A-Za-z0-9_-]{43}}', (c) => {
+  const share = getShare(c.req.param('token'));
+  const note = share && getNote(share.note_uuid);
+  const noStore = { 'cache-control': 'private, no-store' };
+
+  // Истёкшая, отозванная и никогда не существовавшая ссылки отвечают одинаково:
+  // по ответу нельзя узнать, была ли за токеном заметка.
+  if (!share || !note) return c.html(renderShareGone(SITE_NAME), 404, noStore);
+
+  return c.html(
+    renderNotePage(note, SITE_NAME, { share: { expiresAt: share.expires_at } }),
+    200,
+    noStore,
+  );
+});
+
 // --- страницы заметок (оба токена) -------------------------------------------
 
 app.get('/:uuid{[0-9a-fA-F-]{36}}', guardToken, (c) => {
@@ -270,6 +358,9 @@ app.get(
   serveStatic({ path: './dist/web/index.html' }),
 );
 
-console.log(`[notes] ${SITE_NAME} → http://localhost:${PORT} (${countNotes()} заметок)`);
+const swept = sweepExpiredShares();
+console.log(
+  `[notes] ${SITE_NAME} → http://localhost:${PORT} (${countNotes()} заметок, снято истёкших ссылок: ${swept})`,
+);
 
 export default { port: PORT, fetch: app.fetch };

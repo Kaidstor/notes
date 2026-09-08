@@ -10,11 +10,17 @@
  *
  * Берётся админский, если он есть в окружении: под ним доступно всё. Read-токен
  * остаётся рабочим вариантом для агента, которому листинг чужих заметок не нужен.
+ *
+ * Временная ссылка без токена: --share <uuid> [--ttl 1h|1d|7d], список выданных
+ * --shares <uuid>, отзыв --unshare <token>. Отозвать read-токеном можно только
+ * ссылку, выданную им же.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const DEFAULT_HOST = 'https://notes.kaidstor.ru';
 const LOCAL_HOST = 'http://localhost:3000';
+
+const TTL: Record<string, number> = { '1h': 3600, '1d': 86400, '7d': 604800 };
 
 interface Options {
   file?: string;
@@ -25,10 +31,14 @@ interface Options {
   pin: boolean;
   list?: string;
   remove?: string;
+  share?: string;
+  ttl: string;
+  shares?: string;
+  unshare?: string;
 }
 
 function parseArgs(argv: string[]): Options {
-  const options: Options = { host: DEFAULT_HOST, pin: false };
+  const options: Options = { host: DEFAULT_HOST, pin: false, ttl: '1d' };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
@@ -61,6 +71,19 @@ function parseArgs(argv: string[]): Options {
         break;
       case '--delete':
         options.remove = next();
+        break;
+      case '--share':
+        options.share = next();
+        break;
+      case '--ttl':
+        options.ttl = next();
+        if (!TTL[options.ttl]) fail(`--ttl принимает 1h, 1d или 7d, а не «${options.ttl}»`);
+        break;
+      case '--shares':
+        options.shares = next();
+        break;
+      case '--unshare':
+        options.unshare = next();
         break;
       default:
         if (arg.startsWith('--')) fail(`неизвестный флаг ${arg}`);
@@ -137,8 +160,49 @@ if (options.list !== undefined) {
   process.exit(0);
 }
 
+if (options.share) {
+  const res = await fetch(`${options.host}/api/notes/${options.share}/shares`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${requireToken()}`,
+    },
+    body: JSON.stringify({ ttl: TTL[options.ttl] }),
+  });
+  if (!res.ok) fail(`ссылка не выдана: HTTP ${res.status} ${await res.text()}`);
+
+  const share = (await res.json()) as { url: string; expires_at: string };
+  console.log(share.url);
+  console.error(`до ${share.expires_at}`);
+  process.exit(0);
+}
+
+if (options.shares) {
+  const res = await fetch(`${options.host}/api/notes/${options.shares}/shares`, {
+    headers: { authorization: `Bearer ${requireToken()}` },
+  });
+  if (!res.ok) fail(`список ссылок не получен: HTTP ${res.status}`);
+
+  const data = (await res.json()) as { shares: { token: string; expires_at: string }[] };
+  for (const share of data.shares) {
+    console.log(`${share.token}  ${share.expires_at}`);
+  }
+  process.exit(0);
+}
+
+if (options.unshare) {
+  const res = await fetch(`${options.host}/api/shares/${options.unshare}`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${requireToken()}` },
+  });
+  if (!res.ok) fail(`отзыв не прошёл: HTTP ${res.status} ${await res.text()}`);
+
+  console.log(`отозвано: ${options.unshare}`);
+  process.exit(0);
+}
+
 if (!options.file) {
-  fail('укажи путь к .md файлу (или --list / --delete <uuid>)');
+  fail('укажи путь к .md файлу (или --list / --delete <uuid> / --share <uuid>)');
 }
 
 const markdown = readFileSync(options.file, 'utf8');
