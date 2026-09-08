@@ -39,10 +39,19 @@ interface Options {
 
 function parseArgs(argv: string[]): Options {
   const options: Options = { host: DEFAULT_HOST, pin: false, ttl: '1d' };
+  const modes: string[] = [];
+  let ttlGiven = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
-    const next = () => argv[++i] ?? '';
+    // Аргумент флага не может быть другим флагом: иначе `--share --delete X`
+    // молча съедает `--delete` как uuid.
+    const next = () => {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith('--')) fail(`флагу ${arg} нужен аргумент`);
+      i++;
+      return value;
+    };
 
     switch (arg) {
       case '--local':
@@ -67,29 +76,39 @@ function parseArgs(argv: string[]): Options {
         options.pin = true;
         break;
       case '--list':
+        modes.push(arg);
         options.list = argv[i + 1]?.startsWith('--') === false ? next() : '';
         break;
       case '--delete':
+        modes.push(arg);
         options.remove = next();
         break;
       case '--share':
+        modes.push(arg);
         options.share = next();
         break;
       case '--ttl':
+        ttlGiven = true;
         options.ttl = next();
         if (!TTL[options.ttl]) fail(`--ttl принимает 1h, 1d или 7d, а не «${options.ttl}»`);
         break;
       case '--shares':
+        modes.push(arg);
         options.shares = next();
         break;
       case '--unshare':
+        modes.push(arg);
         options.unshare = next();
         break;
       default:
         if (arg.startsWith('--')) fail(`неизвестный флаг ${arg}`);
+        modes.push(`файл ${arg}`);
         options.file = arg;
     }
   }
+
+  if (modes.length > 1) fail(`нужен ровно один режим, передано: ${modes.join(', ')}`);
+  if (ttlGiven && !options.share) fail('--ttl работает только вместе с --share');
 
   return options;
 }
