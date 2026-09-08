@@ -59,7 +59,9 @@ export function parseFrontmatter(source: string): { data: Frontmatter; body: str
 
   const data: Frontmatter = {};
   for (const line of match[1]!.split(/\r?\n/)) {
-    const kv = /^\s*([a-zA-Z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+    // Только ключи с колонки 0: у OKF-frontmatter вложенный `sources[].title`
+    // иначе перебивает заголовок заметки.
+    const kv = /^([a-zA-Z_][\w-]*)\s*:\s*(.*)$/.exec(line);
     if (!kv) continue;
 
     const key = kv[1]!.toLowerCase();
