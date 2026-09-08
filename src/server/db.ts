@@ -1,4 +1,5 @@
 import { Database } from 'bun:sqlite';
+import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -32,11 +33,23 @@ export interface NoteListItem {
   snippet: string;
 }
 
+/** Временная ссылка на заметку: открывает страницу без токена до `expires_at`. */
+export interface ShareRow {
+  token: string;
+  note_uuid: string;
+  created_by: NoteOwner;
+  created_at: string;
+  expires_at: string;
+}
+
 const dbPath = process.env.NOTES_DB ?? './data/notes.db';
 mkdirSync(dirname(dbPath), { recursive: true });
 
 export const db = new Database(dbPath, { create: true });
 db.exec('PRAGMA journal_mode = WAL');
+// Внешние ключи в SQLite выключены по умолчанию и включаются на соединение,
+// без этой строки REFERENCES у shares остаётся декларацией.
+db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS notes (
@@ -53,6 +66,14 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS notes_updated_at ON notes(updated_at DESC);
+  CREATE TABLE IF NOT EXISTS shares (
+    token      TEXT PRIMARY KEY,
+    note_uuid  TEXT NOT NULL REFERENCES notes(uuid) ON DELETE CASCADE,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS shares_note_uuid ON shares(note_uuid);
 `);
 
 // Заметки, созданные до появления ролей, остаются за admin: дефолт колонки
@@ -106,8 +127,65 @@ export function getNote(uuid: string): NoteRow | null {
   return db.query('SELECT * FROM notes WHERE uuid = ?').get(uuid) as NoteRow | null;
 }
 
-export function deleteNote(uuid: string): boolean {
+// Каскад по FK работает только при PRAGMA foreign_keys на этом соединении;
+// явный DELETE держит ссылки мёртвыми и там, где прагму забыли или сняли.
+export const deleteNote = db.transaction((uuid: string): boolean => {
+  db.query('DELETE FROM shares WHERE note_uuid = ?').run(uuid);
   return db.query('DELETE FROM notes WHERE uuid = ?').run(uuid).changes > 0;
+});
+
+// --- временные ссылки --------------------------------------------------------
+
+export function createShare(noteUuid: string, createdBy: NoteOwner, ttlSeconds: number): ShareRow {
+  sweepExpiredShares();
+
+  // 32 байта в base64url это ровно 43 символа без паддинга: на эту длину
+  // завязан шаблон маршрута `/s/:token{[A-Za-z0-9_-]{43}}`.
+  const token = randomBytes(32).toString('base64url');
+  const now = new Date();
+  const expires = new Date(now.getTime() + ttlSeconds * 1000);
+
+  db.query(
+    `INSERT INTO shares (token, note_uuid, created_by, created_at, expires_at)
+     VALUES (?, ?, ?, ?, ?)`,
+  ).run(token, noteUuid, createdBy, now.toISOString(), expires.toISOString());
+
+  return getShare(token)!;
+}
+
+/** Только живая ссылка: истёкшая для вызывающего неотличима от отозванной. */
+export function getShare(token: string): ShareRow | null {
+  return db
+    .query('SELECT * FROM shares WHERE token = ? AND expires_at > ?')
+    .get(token, new Date().toISOString()) as ShareRow | null;
+}
+
+export function listShares(noteUuid: string, createdBy?: NoteOwner): ShareRow[] {
+  const params: string[] = [noteUuid, new Date().toISOString()];
+  if (createdBy) params.push(createdBy);
+
+  return db
+    .query(
+      `SELECT * FROM shares
+        WHERE note_uuid = ? AND expires_at > ? ${createdBy ? 'AND created_by = ?' : ''}
+        ORDER BY created_at DESC`,
+    )
+    .all(...params) as ShareRow[];
+}
+
+export function revokeShare(token: string, createdBy?: NoteOwner): boolean {
+  const params: string[] = [token];
+  if (createdBy) params.push(createdBy);
+
+  return (
+    db
+      .query(`DELETE FROM shares WHERE token = ? ${createdBy ? 'AND created_by = ?' : ''}`)
+      .run(...params).changes > 0
+  );
+}
+
+export function sweepExpiredShares(): number {
+  return db.query('DELETE FROM shares WHERE expires_at <= ?').run(new Date().toISOString()).changes;
 }
 
 /** `owner` сужает выборку до заметок одной роли: read видит в индексе только свои. */
