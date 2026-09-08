@@ -46,7 +46,13 @@ if (!ADMIN_TOKEN || !READ_TOKEN) {
 type Env = { Variables: { role: NoteOwner } };
 
 const app = new Hono<Env>();
-app.use('*', logger());
+
+// Токен ссылки это capability: строка лога с полным `/s/<token>` равна утечке ссылки.
+const SHARE_TOKEN_IN_PATH = /\/(s|api\/shares)\/([A-Za-z0-9_-]{6})[A-Za-z0-9_-]{37}/g;
+app.use(
+  '*',
+  logger((line, ...rest) => console.log(line.replace(SHARE_TOKEN_IN_PATH, '/$1/$2…'), ...rest)),
+);
 
 // Страницы закрыты токеном, но ссылка всё равно утекает referer'ом и превью-ботами:
 // заголовки — второй рубеж, чтобы адрес не разошёлся дальше того, кому его дали.
