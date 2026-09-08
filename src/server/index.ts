@@ -268,10 +268,14 @@ function shareJson(share: ShareRow) {
 
 // Выдать ссылку может любая роль: страницу под токеном и так читают обе.
 app.post('/api/notes/:uuid{[0-9a-fA-F-]{36}}/shares', guardToken, async (c) => {
+  const payload = (await c.req.json().catch(() => ({}))) as { ttl?: unknown };
+
+  // Ниже ни одного await: bun:sqlite синхронный, и между getNote и INSERT
+  // чужой обработчик (DELETE заметки) вклиниться не может. С await до проверки
+  // ссылка вставлялась бы сиротой и оживала при повторной публикации uuid.
   const note = getNote(c.req.param('uuid'));
   if (!note) return c.json({ error: 'не найдено' }, 404);
 
-  const payload = (await c.req.json().catch(() => ({}))) as { ttl?: unknown };
   const ttl = Number(payload.ttl);
   if (!Number.isInteger(ttl) || ttl < SHARE_TTL_MIN || ttl > SHARE_TTL_MAX) {
     return c.json(

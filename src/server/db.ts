@@ -47,6 +47,9 @@ mkdirSync(dirname(dbPath), { recursive: true });
 
 export const db = new Database(dbPath, { create: true });
 db.exec('PRAGMA journal_mode = WAL');
+// Внешние ключи в SQLite выключены по умолчанию и включаются на соединение,
+// без этой строки REFERENCES у shares остаётся декларацией.
+db.exec('PRAGMA foreign_keys = ON');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS notes (
@@ -65,7 +68,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS notes_updated_at ON notes(updated_at DESC);
   CREATE TABLE IF NOT EXISTS shares (
     token      TEXT PRIMARY KEY,
-    note_uuid  TEXT NOT NULL,
+    note_uuid  TEXT NOT NULL REFERENCES notes(uuid) ON DELETE CASCADE,
     created_by TEXT NOT NULL,
     created_at TEXT NOT NULL,
     expires_at TEXT NOT NULL
@@ -124,8 +127,8 @@ export function getNote(uuid: string): NoteRow | null {
   return db.query('SELECT * FROM notes WHERE uuid = ?').get(uuid) as NoteRow | null;
 }
 
-// Ссылки живут отдельной таблицей без FK, поэтому без этого DELETE токен
-// удалённой заметки остался бы валидным до истечения срока.
+// Каскад по FK работает только при PRAGMA foreign_keys на этом соединении;
+// явный DELETE держит ссылки мёртвыми и там, где прагму забыли или сняли.
 export const deleteNote = db.transaction((uuid: string): boolean => {
   db.query('DELETE FROM shares WHERE note_uuid = ?').run(uuid);
   return db.query('DELETE FROM notes WHERE uuid = ?').run(uuid).changes > 0;
