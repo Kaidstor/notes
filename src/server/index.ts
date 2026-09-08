@@ -314,17 +314,13 @@ app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}/shares', guardToken, (c) => {
   return c.json({ shares: shares.map(shareJson) });
 });
 
+// Чужая ссылка для read-токена отвечает тем же 404, что и несуществующая:
+// иначе по коду ответа можно перебирать живые токены.
 app.delete('/api/shares/:token{[A-Za-z0-9_-]{43}}', guardToken, (c) => {
-  const share = getShare(c.req.param('token'));
-  if (!share) return c.json({ error: 'не найдено' }, 404);
-
   const role = c.get('role');
-  if (role !== 'admin' && share.created_by !== role) {
-    return c.json({ error: 'ссылка чужая: read-токен отзывает только свои' }, 403);
-  }
+  const removed = revokeShare(c.req.param('token'), role === 'admin' ? undefined : role);
 
-  revokeShare(share.token);
-  return c.json({ ok: true });
+  return removed ? c.json({ ok: true }) : c.json({ error: 'не найдено' }, 404);
 });
 
 // --- страница по временной ссылке (без гейта) --------------------------------
