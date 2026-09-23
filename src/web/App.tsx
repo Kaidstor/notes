@@ -113,13 +113,13 @@ export default function App() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = document.activeElement === inputRef.current;
-      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing)) {
+      const inSearch = document.activeElement === inputRef.current;
+      if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !isEditable(e.target))) {
         e.preventDefault();
         inputRef.current?.focus();
         inputRef.current?.select();
       }
-      if (e.key === 'Escape' && typing) {
+      if (e.key === 'Escape' && inSearch) {
         setQuery('');
         setPicked([]);
         inputRef.current?.blur();
@@ -526,6 +526,15 @@ function Highlight({ text, query }: { text: string; query: string }) {
         ),
       )}
     </>
+  );
+}
+
+function isEditable(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target instanceof HTMLInputElement ||
+      target instanceof HTMLTextAreaElement ||
+      target.isContentEditable)
   );
 }
 
