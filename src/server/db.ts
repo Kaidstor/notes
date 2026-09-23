@@ -30,7 +30,7 @@ export interface NoteListItem {
   title: string;
   tags: string[];
   stale_after: string | null;
-  /** Посчитано по часам сервера: клиенту в другом часовом поясе дату не сравнивать. */
+  /** Посчитано сервером в поясе NOTES_TZ: клиенту в другом поясе дату не сравнивать. */
   stale: boolean;
   created_at: string;
   updated_at: string;
@@ -101,11 +101,18 @@ if (!hasColumn('stale_after')) {
   db.exec('ALTER TABLE notes ADD COLUMN stale_after TEXT');
 }
 
-/** Сегодня по часам сервера, `YYYY-MM-DD`: с этой строкой сравнивается `stale_after`. */
+// Пояс задаётся явно: в контейнере TZ не выставлен, и по его часам (UTC) заметка
+// с `stale_after` на завтра висела бы до 03:00 МСК. Кривой NOTES_TZ роняет старт.
+const dayFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: process.env.NOTES_TZ ?? 'Europe/Moscow',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Сегодня в поясе NOTES_TZ, `YYYY-MM-DD`: с этой строкой сравнивается `stale_after`. */
 export function today(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  return dayFmt.format(new Date());
 }
 
 export function isStale(staleAfter: string | null): boolean {
