@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { parseFrontmatter } from './render.ts';
+
 /** Роль токена, которым заметка создана. Заметки до появления ролей — admin. */
 export type NoteOwner = 'admin' | 'read';
 
@@ -97,8 +99,18 @@ const hasColumn = (name: string) =>
 if (!hasColumn('owner')) {
   db.exec("ALTER TABLE notes ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'");
 }
+// Заметки, опубликованные со stale_after до появления колонки, получили бы NULL и
+// оставались бессрочными до следующей правки: срок достаём из сохранённого markdown.
 if (!hasColumn('stale_after')) {
-  db.exec('ALTER TABLE notes ADD COLUMN stale_after TEXT');
+  db.transaction(() => {
+    db.exec('ALTER TABLE notes ADD COLUMN stale_after TEXT');
+    const rows = db.query('SELECT uuid, markdown FROM notes').all() as Pick<NoteRow, 'uuid' | 'markdown'>[];
+    const update = db.query('UPDATE notes SET stale_after = ? WHERE uuid = ?');
+    for (const row of rows) {
+      const staleAfter = parseFrontmatter(row.markdown).data.stale_after;
+      if (staleAfter) update.run(staleAfter, row.uuid);
+    }
+  })();
 }
 
 // Пояс задаётся явно: в контейнере TZ не выставлен, и по его часам (UTC) заметка
