@@ -1,0 +1,2039 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reverse IP: поиск доменов на хосте</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<script>
+(() => {
+  const q = new URLSearchParams(location.search);
+  const v = q.get('v') || localStorage.getItem('demo-v') || 'book';
+  const t = q.get('t') || localStorage.getItem('demo-theme') || 'auto';
+  const dark = t === 'dark' || (t === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+  document.documentElement.dataset.v = v;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:ital,opsz,wght@0,7..72,300..700;1,7..72,300..600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500&family=Onest:wght@400;500;600;700;800;900&family=Commissioner:wght@300..700&family=JetBrains+Mono:ital,wght@0,400..800;1,400&display=swap">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #09090b;
+  --panel: #101013;
+  --panel-2: #18181b;
+  --border: #27272a;
+  --border-strong: #3f3f46;
+  --fg: #e4e4e7;
+  --fg-strong: #fafafa;
+  --muted: #a1a1aa;
+  --faint: #71717a;
+  --dim: #52525b;
+  --accent: #38bdf8;
+  --accent-strong: #0ea5e9;
+  --amber: #f59e0b;
+  --red: #f87171;
+  --emerald: #34d399;
+  --violet: #a78bfa;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  --page: 990px;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --bg: #fafafa;
+    --panel: #ffffff;
+    --panel-2: #f4f4f5;
+    --border: #e4e4e7;
+    --border-strong: #d4d4d8;
+    --fg: #27272a;
+    --fg-strong: #09090b;
+    --muted: #52525b;
+    --faint: #71717a;
+    --dim: #a1a1aa;
+    --accent: #0284c7;
+    --accent-strong: #0369a1;
+    --amber: #b45309;
+    --red: #dc2626;
+    --emerald: #059669;
+    --violet: #7c3aed;
+  }
+}
+* { box-sizing: border-box; }
+/* Свой display у блока (flex) перебивает UA-правило для hidden: без !important
+   скрытая строка панели всё равно рисуется. */
+[hidden] { display: none !important; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--border);
+}
+.topbar-inner {
+  max-width: var(--page); margin: 0 auto; padding: 10px 24px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  font-size: 12px;
+}
+.brand { color: var(--faint); font-family: var(--mono); font-size: 12px; text-decoration: none; }
+.brand:hover { color: var(--fg); }
+.topbar .spacer { flex: 1; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 2px 8px; font-size: 11px; color: var(--muted);
+  text-decoration: none; background: var(--panel);
+}
+a.chip:hover, button.chip:hover { border-color: var(--border-strong); color: var(--fg-strong); }
+button.chip { cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
+button.chip:disabled { opacity: 0.5; cursor: default; }
+.chip[aria-expanded="true"] {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.chip.danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+/* Панель выдачи ссылок раскрывается под шапкой и липнет вместе с ней; фон
+   непрозрачный, иначе сквозь неё просвечивает текст статьи. */
+.share-panel { border-top: 1px solid var(--border); background: var(--panel); }
+.share-inner {
+  max-width: var(--page); margin: 0 auto; padding: 10px 24px;
+  display: flex; flex-direction: column; gap: 8px; font-size: 12px;
+}
+.share-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }
+.share-hint { color: var(--faint); }
+.share-status { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.share-status.bad { color: var(--red); }
+.share-url {
+  flex: 1; min-width: 220px; padding: 3px 8px; font: inherit; font-family: var(--mono);
+  font-size: 11.5px; color: var(--fg-strong); background: var(--panel-2);
+  border: 1px solid var(--border); border-radius: 6px; outline: none;
+}
+.share-url:focus { border-color: var(--border-strong); }
+.share-exp { font-family: var(--mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
+.share-list {
+  list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px;
+  max-height: 150px; overflow-y: auto;
+}
+.share-list li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.share-list a {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); text-decoration: none;
+}
+.share-list a:hover { color: var(--fg-strong); }
+.wrap {
+  max-width: var(--page); margin: 0 auto; padding: 40px 24px 96px;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px;
+}
+@media (min-width: 1080px) { .wrap { grid-template-columns: minmax(0, 1fr) 200px; } }
+header.doc { margin-bottom: 28px; }
+header.doc h1 {
+  margin: 0 0 10px; font-size: 27px; line-height: 1.25;
+  letter-spacing: -0.02em; color: var(--fg-strong); font-weight: 600;
+}
+.meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--faint); font-family: var(--mono);
+}
+.meta .dot { color: var(--dim); }
+.tag {
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
+  color: var(--muted); background: var(--panel-2); font-size: 10.5px;
+}
+article { min-width: 0; }
+article > *:first-child { margin-top: 0; }
+article h2 {
+  margin: 42px 0 14px; padding-bottom: 8px; font-size: 20px; font-weight: 600;
+  letter-spacing: -0.01em; color: var(--fg-strong); border-bottom: 1px solid var(--border);
+  scroll-margin-top: 64px;
+}
+article h3 {
+  margin: 28px 0 10px; font-size: 15.5px; font-weight: 600; color: var(--fg-strong);
+  scroll-margin-top: 64px;
+}
+article h4 { margin: 22px 0 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
+article p { margin: 14px 0; }
+article ul, article ol { margin: 14px 0; padding-left: 22px; }
+article li { margin: 6px 0; }
+article li::marker { color: var(--dim); }
+article a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
+article a:hover { color: var(--accent-strong); border-bottom-color: var(--accent-strong); }
+article strong { color: var(--fg-strong); font-weight: 600; }
+article hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
+article img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+code, kbd, pre { font-family: var(--mono); }
+code {
+  font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0.08em 0.34em; color: var(--fg-strong);
+}
+pre {
+  position: relative; margin: 16px 0; padding: 14px 16px; overflow-x: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  font-size: 12.5px; line-height: 1.6;
+}
+pre code { background: none; border: none; padding: 0; font-size: inherit; color: var(--fg); }
+/* До отрисовки виден исходник: страница остаётся осмысленной, если бандл mermaid
+   не загрузился. После — превью 16:10 со схемой, вписанной целиком. */
+pre.mermaid {
+  background: none; border: none; padding: 8px 0; margin: 22px 0;
+  line-height: 1.5; color: var(--dim); overflow-x: auto;
+}
+pre.mermaid[data-processed] {
+  color: inherit; padding: 0; position: relative; overflow: hidden;
+  aspect-ratio: 16 / 10; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 8px;
+}
+pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
+
+/* Общая площадка pan/zoom: и во врезке, и в просмотрщике. Схему двигают мышью,
+   поэтому выделение текста тут только мешает. */
+.pz {
+  position: absolute; inset: 0; overflow: hidden; cursor: grab;
+  user-select: none; -webkit-user-select: none; touch-action: none;
+}
+.pz.grabbing { cursor: grabbing; }
+.pz-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+.pz-stage svg { display: block; max-width: none; }
+@media (prefers-reduced-motion: reduce) { .pz-stage { transition: none !important; } }
+
+/* Врезка открывается вписанной, но её можно двигать и приближать на месте. */
+.mermaid-wrap { position: relative; }
+.pz-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  border-radius: 6px; padding: 3px 9px; font: inherit; font-size: 12px;
+  line-height: 1.3; cursor: pointer;
+}
+.pz-btn:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.mermaid-bar {
+  position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;
+  opacity: 0.35; transition: opacity 0.12s;
+}
+.mermaid-wrap:hover .mermaid-bar, .mermaid-bar:focus-within { opacity: 1; }
+
+.mermaid-modal {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: flex; flex-direction: column;
+}
+.mermaid-modal .bar {
+  display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+  border-bottom: 1px solid var(--border); background: var(--panel);
+}
+.mermaid-modal .bar .spacer { flex: 1; }
+.mermaid-modal .bar .hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }
+.mermaid-modal .pz { position: relative; flex: 1; inset: auto; }
+pre[data-lang]::before {
+  content: attr(data-lang); position: absolute; top: 6px; right: 10px;
+  font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim);
+}
+/* Длинные строки переносятся: горизонтальный скролл в тексте читать неудобно.
+   Правило не завязано на скрипт — без JS блок всё равно переносится. */
+article pre:not(.mermaid) { white-space: pre-wrap; overflow-wrap: anywhere; }
+article pre.nowrap { white-space: pre; overflow-wrap: normal; }
+/* Панель блока кода живёт в обёртке, а не в pre: внутри скроллящегося pre она
+   уезжала бы вместе с длинной строкой. */
+.code-wrap { position: relative; }
+/* Фон панели непрозрачный: под ней проезжает первая строка кода. */
+.code-bar {
+  position: absolute; top: 1px; right: 1px; z-index: 1;
+  display: flex; align-items: center; gap: 4px;
+  padding: 5px 6px 5px 10px; border-radius: 0 7px 0 8px; background: var(--panel);
+  opacity: 0; pointer-events: none; transition: opacity 0.12s;
+}
+.code-wrap:hover .code-bar, .code-bar:focus-within { opacity: 1; pointer-events: auto; }
+@media (hover: none) { .code-bar { opacity: 1; pointer-events: auto; } }
+.code-btn {
+  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
+  border-radius: 6px; padding: 2px 7px; font-family: var(--mono); font-size: 10.5px;
+  line-height: 1.5; cursor: pointer;
+}
+.code-btn:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.code-btn.copy { min-width: 84px; text-align: center; }
+.code-btn[aria-pressed="true"] {
+  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+blockquote {
+  margin: 16px 0; padding: 2px 0 2px 16px; color: var(--muted);
+  border-left: 2px solid var(--border-strong);
+}
+.tablewrap { margin: 18px 0; max-width: 100%; overflow-x: auto; }
+.tablewrap table { margin: 0; }
+/* Заметки, отрендеренные до появления .tablewrap: таблица скроллится сама. */
+article > table { display: block; max-width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th {
+  background: var(--panel-2); color: var(--faint); font-weight: 600;
+  font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+}
+tbody tr:hover td { background: color-mix(in srgb, var(--panel) 60%, transparent); }
+/* Длинные пути в ячейках рвутся по месту: иначе одна строка кода распирает
+   таблицу шире колонки и включает горизонтальный скролл на ровном месте. */
+td code { overflow-wrap: anywhere; }
+.note, .warn, .ok {
+  margin: 18px 0; padding: 12px 16px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--panel); font-size: 14px;
+}
+.note { border-left: 2px solid var(--accent); }
+.warn { border-left: 2px solid var(--amber); }
+.ok { border-left: 2px solid var(--emerald); }
+.note > *:first-child, .warn > *:first-child, .ok > *:first-child { margin-top: 0; }
+.note > *:last-child, .warn > *:last-child, .ok > *:last-child { margin-bottom: 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 18px 0; }
+.card {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
+  padding: 12px 14px; font-size: 13px;
+}
+.card:hover { border-color: var(--border-strong); }
+.card h4 { margin: 0 0 6px; }
+kbd {
+  border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px;
+  padding: 1px 5px; font-size: 11px; background: var(--panel-2); color: var(--muted);
+}
+nav.toc { display: none; }
+@media (min-width: 1080px) {
+  nav.toc {
+    display: block; position: sticky; top: 88px; align-self: start;
+    font-size: 12px; line-height: 1.55; max-height: calc(100vh - 120px); overflow-y: auto;
+  }
+  nav.toc .toc-title {
+    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--dim); margin-bottom: 10px; font-weight: 600;
+  }
+  nav.toc a {
+    display: block; padding: 3px 0 3px 10px; color: var(--faint);
+    text-decoration: none; border-left: 1px solid var(--border);
+  }
+  nav.toc a:hover { color: var(--fg-strong); border-left-color: var(--border-strong); }
+  nav.toc a.d3 { padding-left: 22px; font-size: 11.5px; }
+  nav.toc a.active {
+    color: var(--fg-strong);
+    border-left-color: var(--accent);
+    background: linear-gradient(to right, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  html { scroll-behavior: smooth; }
+}
+footer.doc {
+  max-width: var(--page); margin: 0 auto; padding: 20px 24px 48px;
+  border-top: 1px solid var(--border); color: var(--dim);
+  font-size: 11px; font-family: var(--mono);
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+}
+footer.doc a { color: var(--faint); text-decoration: none; }
+footer.doc a:hover { color: var(--fg); }
+.empty {
+  max-width: 560px; margin: 18vh auto; padding: 0 24px; text-align: center;
+}
+.empty h1 { font-size: 20px; color: var(--fg-strong); margin: 0 0 8px; font-weight: 600; }
+.empty p { color: var(--faint); font-size: 13px; margin: 0; }
+.gate { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
+.gate input {
+  flex: 1; max-width: 320px; padding: 7px 10px; font: inherit; font-size: 13px;
+  color: var(--fg-strong); background: var(--panel-2); border: 1px solid var(--border);
+  border-radius: 7px; outline: none;
+}
+.gate input:focus { border-color: var(--border-strong); }
+.gate button { cursor: pointer; background: var(--panel-2); font: inherit; font-size: 13px; }
+
+
+/* ---------- 0. Сейчас: CSS прода, тема форсируется переключателем ---------- */
+html[data-v="current"] {
+  color-scheme: dark;
+  --bg: #09090b; --panel: #101013; --panel-2: #18181b; --border: #27272a; --border-strong: #3f3f46;
+  --fg: #e4e4e7; --fg-strong: #fafafa; --muted: #a1a1aa; --faint: #71717a; --dim: #52525b;
+  --accent: #38bdf8; --accent-strong: #0ea5e9; --amber: #f59e0b; --red: #f87171; --emerald: #34d399; --violet: #a78bfa;
+  --mm-bg: #09090b; --mm-node: #18181b; --mm-line: #52525b;
+
+  &[data-theme="light"] {
+    color-scheme: light;
+    --bg: #fafafa; --panel: #ffffff; --panel-2: #f4f4f5; --border: #e4e4e7; --border-strong: #d4d4d8;
+    --fg: #27272a; --fg-strong: #09090b; --muted: #52525b; --faint: #71717a; --dim: #a1a1aa;
+    --accent: #0284c7; --accent-strong: #0369a1; --amber: #b45309; --red: #dc2626; --emerald: #059669; --violet: #7c3aed;
+    --mm-bg: #fafafa; --mm-node: #f4f4f5; --mm-line: #a1a1aa;
+  }
+}
+
+
+/* ---------- 1. Книга ---------- */
+html[data-v="book"] {
+  color-scheme: light;
+  --bg: #f7f8f6; --panel: #ffffff; --panel-2: #eceee9; --border: #d9dcd5; --border-strong: #b9bdb4;
+  --fg: #23262c; --fg-strong: #101318; --muted: #4a4f57; --faint: #6d727a; --dim: #a2a7ad;
+  --accent: #2f3f9e; --accent-strong: #1d2a7a; --amber: #8f5300; --red: #a8261d; --emerald: #2b6541; --violet: #5b3fa0;
+  --serif: "Literata", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --page: 1000px;
+  --mm-bg: #ffffff; --mm-node: #f7f8f6; --mm-border: #9aa0a8; --mm-line: #6d727a;
+
+  &[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1c1e22; --panel: #22252a; --panel-2: #2a2d33; --border: #353940; --border-strong: #4a4f57;
+    --fg: #d9d6cf; --fg-strong: #f2efe9; --muted: #aba79f; --faint: #8b877f; --dim: #62646b;
+    --accent: #a4b1f5; --accent-strong: #c8d0fb; --amber: #e2b261; --red: #f0998f; --emerald: #92c9a3; --violet: #c2adf2;
+    --mm-bg: #22252a; --mm-node: #2a2d33; --mm-border: #62646b; --mm-line: #8b877f;
+  }
+
+  & body {
+    font-family: var(--serif); font-size: 18px; line-height: 1.68;
+    font-optical-sizing: auto; font-variant-numeric: oldstyle-nums proportional-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  & .topbar { background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom-color: transparent; }
+  & .topbar-inner { font-size: 14px; gap: 18px; padding-top: 14px; padding-bottom: 14px; }
+  & .brand { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--muted); }
+  & .chip, & button.chip {
+    border: none; background: none; padding: 0; border-radius: 0; font-family: var(--serif);
+    font-size: 14.5px; color: var(--faint); text-decoration: underline; text-decoration-color: transparent;
+    text-underline-offset: 4px;
+  }
+  & a.chip:hover, & button.chip:hover { color: var(--fg-strong); text-decoration-color: currentColor; border: none; }
+  & .chip[aria-expanded="true"] { color: var(--accent); text-decoration-color: currentColor; }
+  & .share-panel { background: var(--panel); }
+  & .share-url { font-size: 12.5px; border-radius: 3px; }
+
+  & .wrap { padding-top: 72px; gap: 56px; }
+  @media (min-width: 1080px) {
+    & .wrap { grid-template-columns: 180px minmax(0, 680px); justify-content: center; }
+    & .wrap > nav.toc { grid-column: 1; grid-row: 1; top: 96px; }
+    & .wrap > div:first-child { grid-column: 2; }
+  }
+
+  & header.doc { margin-bottom: 56px; }
+  & header.doc h1 {
+    font-family: var(--serif); font-weight: 350; font-size: 46px; line-height: 1.08;
+    letter-spacing: -0.02em; margin-bottom: 20px; text-wrap: balance;
+  }
+  & .meta { font-family: var(--serif); font-style: italic; font-size: 15px; gap: 6px; color: var(--faint); }
+  & .meta .dot { color: var(--dim); }
+  & .meta > span:not(.tag):has(+ .tag), & .meta > span:not(.tag):last-child {
+    font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  }
+  & .tag { border: none; background: none; padding: 0; font-size: 15px; color: var(--faint); }
+  & .meta > span:not(.tag) + .tag::before { content: "— "; color: var(--dim); }
+  & .tag:not(:last-child)::after { content: ","; }
+
+  & article h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 25px; line-height: 1.25;
+    letter-spacing: -0.01em; border-bottom: none; padding-bottom: 0; margin: 2.4em 0 0.6em;
+  }
+  & article h3 { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 20px; margin: 1.8em 0 0.4em; }
+  & article h4 { font-family: var(--serif); font-size: 17px; color: var(--fg-strong); }
+  & article p { margin: 0.9em 0; hyphens: auto; }
+  & article ul, & article ol { padding-left: 1.3em; }
+  & article li { margin: 0.35em 0; }
+  & article li::marker { color: var(--faint); }
+  & article a {
+    color: var(--accent); border-bottom: none; text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  & article a:hover { text-decoration-color: currentColor; }
+  & article strong { font-weight: 650; }
+
+  & code { font-size: 0.8em; border: none; background: var(--panel-2); border-radius: 3px; padding: 0.1em 0.3em; }
+  & pre code { font-size: inherit; padding: 0; background: none; }
+  & pre {
+    background: var(--panel-2); border: none; border-radius: 3px;
+    font-size: 13.5px; line-height: 1.65; padding: 16px 20px;
+  }
+  & pre[data-lang]::before { text-transform: none; letter-spacing: 0; font-family: var(--serif); font-style: italic; font-size: 12.5px; }
+  & .code-bar { background: var(--panel-2); }
+  & .code-btn, & .pz-btn { font-family: var(--serif); font-size: 13px; border-radius: 3px; background: var(--panel); }
+
+  /* Таблицы по-книжному: три линейки, без вертикальных и без заливки. */
+  & table { font-size: 15.5px; font-variant-numeric: lining-nums tabular-nums; }
+  & .tablewrap { margin: 1.8em 0; }
+  & table { border-top: 1.5px solid var(--fg-strong); border-bottom: 1.5px solid var(--fg-strong); }
+  & th {
+    background: none; text-transform: none; letter-spacing: 0; font-size: 14.5px;
+    font-weight: 600; color: var(--fg-strong); border-bottom: 1px solid var(--fg-strong); padding: 10px 14px 8px 0;
+  }
+  & td { border-bottom: none; padding: 7px 14px 7px 0; }
+  & tbody tr:first-child td { padding-top: 10px; }
+  & tbody tr:last-child td { padding-bottom: 10px; }
+  & tbody tr:hover td { background: none; }
+
+  /* Врезки — абзац с заголовком в начале строки, цвет только у заголовка. */
+  & .note, & .warn, & .ok {
+    border: none; background: none; border-radius: 0; font-size: 16.5px;
+    padding: 0 0 0 1.4em; margin: 1.6em 0; border-left: 1px solid var(--border-strong);
+  }
+  & .note::before, & .warn::before, & .ok::before {
+    font-weight: 650; font-variant: small-caps; letter-spacing: 0.03em; margin-right: 0.35em;
+  }
+  & .note::before { content: "примечание."; color: var(--accent); }
+  & .warn::before { content: "осторожно."; color: var(--red); }
+  & .ok::before { content: "готово."; color: var(--emerald); }
+  & .warn { border-left-color: var(--red); }
+
+  & blockquote {
+    border-left: none; padding: 0 2.2em; margin: 1.8em 0; font-style: italic;
+    font-size: 19px; color: var(--muted);
+  }
+  & .cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 36px; margin: 1.6em 0; }
+  & .card {
+    border: none; border-top: 1px solid var(--border-strong); border-radius: 0; background: none;
+    padding: 12px 0 8px; font-size: 16px; line-height: 1.55; color: var(--muted);
+  }
+  & .card:hover { border-color: var(--border-strong); }
+  & .card h4 { font-style: italic; font-weight: 600; font-size: 17px; color: var(--fg-strong); margin: 0 0 4px; }
+  & kbd { font-family: var(--mono); border-radius: 3px; }
+
+  & pre.mermaid[data-processed] { border-radius: 3px; border-color: var(--border); }
+
+  @media (min-width: 1080px) {
+    & nav.toc { font-size: 14px; line-height: 1.4; }
+    & nav.toc .toc-title {
+      text-transform: none; letter-spacing: 0; font-size: 14px; font-style: italic;
+      font-weight: 400; color: var(--faint); margin-bottom: 14px;
+    }
+    & nav.toc a { border-left: none; padding: 5px 0 5px 16px; color: var(--faint); position: relative; }
+    & nav.toc a.d3 { padding-left: 28px; font-size: 13px; font-style: italic; }
+    & nav.toc a:hover { color: var(--fg-strong); }
+    & nav.toc a.active { background: none; color: var(--fg-strong); }
+    & nav.toc a.active::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+    & nav.toc a.d3.active::before { left: 12px; }
+  }
+
+  & footer.doc {
+    font-family: var(--serif); font-style: italic; font-size: 14px; justify-content: center;
+    border-top: none; color: var(--faint);
+  }
+}
+
+
+/* ---------- 2. Чертёж ---------- */
+html[data-v="draft"] {
+  color-scheme: light;
+  --bg: #eef2f4; --panel: #f7f9fa; --panel-2: #dfe7ec; --border: #aabdca; --border-strong: #6d889c;
+  --fg: #1c3044; --fg-strong: #0b1d2f; --muted: #3d5569; --faint: #5b7285; --dim: #8aa0b1;
+  --accent: #1d5ea8; --accent-strong: #134a88; --amber: #a86400; --red: #c4352b; --emerald: #2b7a4c; --violet: #5a45a8;
+  --desk: #e2e9ee; --grid: rgb(29 94 168 / 0.07); --grid-major: rgb(29 94 168 / 0.14);
+  --cond: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --page: 1080px;
+  --mm-bg: #f7f9fa; --mm-node: #eef2f4; --mm-border: #1c3044; --mm-line: #1c3044; --mm-text: #0b1d2f;
+
+  /* Тёмная — синька: белые линии на синем. */
+  &[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #123458; --panel: #16406a; --panel-2: #1b4a7a; --border: #3d6c98; --border-strong: #7ea4c7;
+    --fg: #d8e6f2; --fg-strong: #ffffff; --muted: #aac4db; --faint: #8baac6; --dim: #5f86aa;
+    --accent: #ffd479; --accent-strong: #ffe3a8; --amber: #ffc861; --red: #ff9384; --emerald: #93e2b4; --violet: #c9b8ff;
+    --desk: #0d2945; --grid: rgb(255 255 255 / 0.05); --grid-major: rgb(255 255 255 / 0.1);
+    --mm-bg: #16406a; --mm-node: #123458; --mm-border: #d8e6f2; --mm-line: #d8e6f2; --mm-text: #ffffff;
+  }
+
+  & body {
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.62;
+    background-color: var(--desk);
+    background-image:
+      linear-gradient(var(--grid-major) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+    background-attachment: fixed;
+  }
+
+  & .topbar { background: var(--fg-strong); border-bottom: none; backdrop-filter: none; }
+  & .topbar-inner { max-width: var(--page); color: var(--bg); font-family: var(--cond); font-size: 13px; }
+  & .brand { font-family: var(--cond); font-size: 13.5px; font-weight: 600; color: var(--bg); }
+  & .brand:hover { color: var(--bg); text-decoration: underline; }
+  & .chip, & button.chip {
+    font-family: var(--cond); font-size: 12.5px; border-radius: 0; background: transparent;
+    color: var(--bg); border-color: color-mix(in srgb, var(--bg) 40%, transparent);
+  }
+  & a.chip:hover, & button.chip:hover { color: var(--fg-strong); background: var(--bg); border-color: var(--bg); }
+  & .chip[aria-expanded="true"] { color: var(--fg-strong); background: var(--bg); border-color: var(--bg); }
+  & .chip.danger:hover { color: var(--red); background: var(--bg); }
+  & .share-panel { background: var(--panel); border-top: 2px solid var(--fg-strong); border-bottom: 2px solid var(--fg-strong); }
+  & .share-panel .chip { color: var(--fg); border-color: var(--border-strong); }
+  & .share-panel .chip:hover { background: var(--panel-2); color: var(--fg-strong); }
+  & .share-url { border-radius: 0; }
+
+  /* Лист: рамка с полем подшивки слева, вокруг — рабочий стол с сеткой. */
+  & .wrap {
+    margin: 32px auto 0; max-width: calc(var(--page) - 48px); background: var(--bg);
+    border: 2px solid var(--fg-strong); padding: 40px 40px 72px 76px;
+    outline: 1px solid var(--border-strong); outline-offset: 10px;
+  }
+  @media (max-width: 700px) {
+    & .wrap { margin: 16px 12px 0; padding: 24px 18px 48px 22px; outline: none; }
+  }
+  @media (min-width: 1080px) { & .wrap { grid-template-columns: minmax(0, 1fr) 210px; } }
+
+  /* Штамп: заголовок и строка ячеек. */
+  & header.doc { border: 2px solid var(--fg-strong); margin-bottom: 40px; background: var(--panel); }
+  & header.doc h1 {
+    font-family: var(--cond); font-weight: 600; font-size: 34px; line-height: 1.15;
+    letter-spacing: 0; margin: 0; padding: 18px 20px 16px; border-bottom: 1px solid var(--fg-strong);
+  }
+  & .meta { gap: 0; font-family: var(--cond); font-size: 13px; color: var(--fg); align-items: stretch; }
+  & .meta .dot { display: none; }
+  & .meta > span { padding: 6px 14px 7px; border-right: 1px solid var(--fg-strong); line-height: 1.3; }
+  & .meta > span:first-child::before, & .meta > span:not(.tag):has(+ .tag)::before, & .meta > span:not(.tag) + .tag::before {
+    display: block; font-size: 10.5px; color: var(--faint); margin-bottom: 1px;
+  }
+  & .meta > span:first-child::before { content: "Разраб."; }
+  & .meta > span:not(.tag):has(+ .tag)::before { content: "Обозначение"; }
+  & .meta > span:not(.tag):has(+ .tag) { font-family: var(--mono); font-size: 11.5px; }
+  & .tag {
+    border: none; border-radius: 0; background: none; font-size: 13px; color: var(--fg);
+    padding: 6px 12px 7px; border-right: 1px solid var(--fg-strong);
+    display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  & .meta > span:not(.tag) + .tag::before { content: "Теги"; }
+  & .tag:last-child { border-right: none; }
+
+  & article { counter-reset: h2; }
+  & article h2 {
+    counter-increment: h2; counter-reset: h3;
+    display: flex; align-items: baseline; gap: 14px;
+    font-family: var(--cond); font-size: 23px; font-weight: 600; letter-spacing: 0;
+    margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 1.5px solid var(--fg-strong);
+  }
+  & article h2::before {
+    content: counter(h2); flex: none; min-width: 34px; text-align: center;
+    border: 1.5px solid var(--fg-strong); font-size: 17px; line-height: 30px;
+  }
+  & article h3 { counter-increment: h3; font-family: var(--cond); font-size: 18px; font-weight: 600; }
+  & article h3::before { content: counter(h2) "." counter(h3) " "; color: var(--faint); margin-right: 4px; }
+  & article h4 { font-family: var(--cond); font-size: 15px; color: var(--fg-strong); }
+  & article a { color: var(--accent); border-bottom: 1px dashed currentColor; }
+  & article a:hover { border-bottom-style: solid; }
+  & article li::marker { color: var(--fg); }
+
+  & code { border-radius: 0; background: var(--panel-2); border-color: transparent; font-size: 12.5px; }
+  & pre { border-radius: 0; border: 1px solid var(--fg-strong); background: var(--panel); font-size: 13px; }
+  & pre[data-lang]::before { text-transform: none; letter-spacing: 0; font-family: var(--cond); font-size: 11.5px; color: var(--faint); }
+  & .code-bar { border-radius: 0; background: var(--panel); }
+  & .code-btn, & .pz-btn { border-radius: 0; font-family: var(--cond); font-size: 12px; background: var(--panel); border-color: var(--fg-strong); color: var(--fg); }
+
+  & table { font-size: 14px; border: 1.5px solid var(--fg-strong); }
+  & th, & td { border: 1px solid var(--border-strong); padding: 7px 11px; }
+  & th {
+    background: var(--panel-2); text-transform: none; letter-spacing: 0; font-family: var(--cond);
+    font-size: 13px; font-weight: 600; color: var(--fg-strong); border-bottom: 1.5px solid var(--fg-strong);
+  }
+  & tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+
+  /* Тип врезки передаёт штриховка слева. */
+  & .note, & .warn, & .ok {
+    position: relative; border-radius: 0; background: var(--panel); font-size: 14.5px;
+    border: 1px solid var(--c); padding: 12px 16px 12px 34px;
+  }
+  & .note { --c: var(--accent); }
+  & .warn { --c: var(--red); }
+  & .ok { --c: var(--emerald); }
+  & .note::before, & .warn::before, & .ok::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
+    border-right: 1px solid var(--c);
+    background: repeating-linear-gradient(-45deg, var(--c) 0 1px, transparent 1px 6px);
+  }
+  & .ok::before { background: repeating-linear-gradient(0deg, var(--c) 0 1px, transparent 1px 5px); }
+
+  & blockquote { border-left: 3px double var(--fg-strong); color: var(--fg); padding-left: 14px; }
+  & .cards { gap: 0; border: 1.5px solid var(--fg-strong); grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  & .card { border: none; border-radius: 0; outline: 1px solid var(--border-strong); background: var(--panel); font-size: 13.5px; }
+  & .card:hover { background: var(--bg); }
+  & .card h4 { font-family: var(--cond); font-size: 15px; }
+  & kbd { border-radius: 0; font-family: var(--mono); border-color: var(--fg-strong); }
+
+  & pre.mermaid[data-processed] {
+    border-radius: 0; border: 1px solid var(--fg-strong); background-color: var(--panel);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  @media (min-width: 1080px) {
+    & nav.toc { top: 84px; border: 1.5px solid var(--fg-strong); background: var(--panel); padding: 0 0 6px; counter-reset: t2; font-family: var(--cond); font-size: 13px; }
+    & nav.toc .toc-title {
+      text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--fg-strong);
+      padding: 7px 12px; margin: 0 0 6px; border-bottom: 1px solid var(--fg-strong);
+    }
+    & nav.toc a { border-left: 3px solid transparent; padding: 3px 12px 3px 9px; color: var(--muted); }
+    & nav.toc a.d2 { counter-increment: t2; counter-reset: t3; }
+    & nav.toc a.d2::before { content: counter(t2) "  "; color: var(--faint); white-space: pre; }
+    & nav.toc a.d3 { counter-increment: t3; padding-left: 26px; font-size: 12.5px; }
+    & nav.toc a.d3::before { content: counter(t2) "." counter(t3) "  "; color: var(--faint); white-space: pre; }
+    & nav.toc a:hover { color: var(--fg-strong); border-left-color: var(--border-strong); }
+    & nav.toc a.active { background: var(--panel-2); color: var(--fg-strong); border-left-color: var(--accent); }
+  }
+
+  & footer.doc {
+    max-width: calc(var(--page) - 48px); margin: 0 auto 56px; padding: 0; gap: 0;
+    border: 2px solid var(--fg-strong); border-top: none; background: var(--bg);
+    font-family: var(--cond); font-size: 12.5px; color: var(--fg);
+  }
+  & footer.doc > * { padding: 7px 14px; border-right: 1px solid var(--fg-strong); color: var(--fg); }
+  & footer.doc > span:not(:only-child) { display: none; }
+  & footer.doc::after { content: "Лист 1    Листов 1"; white-space: pre; margin-left: auto; padding: 7px 14px; border-left: 1px solid var(--fg-strong); }
+}
+
+
+/* ---------- 3. Плакат ---------- */
+html[data-v="poster"] {
+  color-scheme: light;
+  --bg: #ffffff; --panel: #f3f4f9; --panel-2: #e8eaf4; --border: #d8dbe8; --border-strong: #aeb3cc;
+  --fg: #171a26; --fg-strong: #000000; --muted: #3d4257; --faint: #676d86; --dim: #a0a5bb;
+  --accent: #2233dd; --accent-strong: #1422b0; --on-accent: #ffffff;
+  --amber: #ffd23f; --red: #e8382f; --emerald: #0e9f6e; --violet: #7a3ee0;
+  --ink-block: #10121c; --on-ink: #e9ebf5;
+  --warn-bg: #ffd23f; --warn-fg: #1a1400; --ok-bg: #c8f3de; --ok-fg: #053b26;
+  --display: "Onest", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --page: 1120px;
+  --mm-bg: #ffffff; --mm-node: #eef0fb; --mm-border: #2233dd; --mm-line: #171a26; --mm-text: #000000;
+
+  &[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0c0f30; --panel: #151a47; --panel-2: #1d2358; --border: #2b3272; --border-strong: #464e9c;
+    --fg: #e4e7ff; --fg-strong: #ffffff; --muted: #b3b8ea; --faint: #8d93ca; --dim: #5d649d;
+    --accent: #ffd23f; --accent-strong: #ffe27d; --on-accent: #0c0f30;
+    --red: #ff6b5e; --emerald: #3ddc97;
+    --ink-block: #05071c; --on-ink: #dfe2ff;
+    --warn-bg: #ff6b5e; --warn-fg: #1a0400; --ok-bg: #3ddc97; --ok-fg: #02210f;
+    --mm-bg: #151a47; --mm-node: #0c0f30; --mm-border: #ffd23f; --mm-line: #b3b8ea; --mm-text: #ffffff;
+  }
+
+  & body { font-family: var(--display); font-size: 17.5px; line-height: 1.6; -webkit-font-smoothing: antialiased; }
+
+  & .topbar { background: var(--bg); border-bottom: 3px solid var(--fg-strong); backdrop-filter: none; }
+  & .topbar-inner { font-size: 14px; padding-top: 12px; padding-bottom: 12px; }
+  & .brand { font-family: var(--display); font-weight: 800; font-size: 15px; color: var(--fg-strong); letter-spacing: -0.01em; }
+  & .chip, & button.chip {
+    font-family: var(--display); font-weight: 600; font-size: 13px; border-radius: 999px;
+    border: 2px solid var(--fg-strong); background: transparent; color: var(--fg-strong); padding: 3px 12px;
+  }
+  & a.chip:hover, & button.chip:hover, & .chip[aria-expanded="true"] {
+    background: var(--fg-strong); color: var(--bg); border-color: var(--fg-strong);
+  }
+  & .chip.danger:hover { background: var(--red); border-color: var(--red); color: #fff; }
+  & .share-panel { background: var(--panel); border-top: none; border-bottom: 3px solid var(--fg-strong); }
+  & .share-url { border-radius: 999px; padding: 5px 14px; border: 2px solid var(--fg-strong); background: var(--bg); }
+
+  & .wrap { padding-top: 56px; gap: 64px; }
+  @media (min-width: 1080px) { & .wrap { grid-template-columns: minmax(0, 1fr) 220px; } }
+
+  & header.doc { margin-bottom: 64px; }
+  & header.doc h1 {
+    font-family: var(--display); font-weight: 850; font-size: clamp(42px, 7.2vw, 92px);
+    line-height: 0.96; letter-spacing: -0.045em; margin-bottom: 26px; text-wrap: balance;
+    max-width: 15ch;
+  }
+  & .meta { font-family: var(--display); font-size: 14px; font-weight: 600; color: var(--fg-strong); gap: 10px; }
+  & .meta .dot { color: var(--dim); }
+  & .meta > span:not(.tag):has(+ .tag), & .meta > span:not(.tag):last-child { font-family: var(--mono); font-size: 12px; font-weight: 400; color: var(--faint); }
+  & .tag {
+    border: none; border-radius: 999px; padding: 3px 11px; font-size: 13px; font-weight: 700;
+    background: var(--accent); color: var(--on-accent);
+  }
+
+  & article { max-width: 700px; }
+  & article h2 {
+    font-family: var(--display); font-weight: 800; font-size: 36px; line-height: 1.05;
+    letter-spacing: -0.035em; border-bottom: none; padding: 0; margin: 80px 0 20px;
+    scroll-margin-top: 80px;
+  }
+  & article h2::before {
+    content: ""; display: block; width: 56px; height: 8px; background: var(--accent); margin-bottom: 18px;
+  }
+  & article h3 { font-family: var(--display); font-weight: 750; font-size: 22px; letter-spacing: -0.02em; margin: 40px 0 10px; }
+  & article h4 { font-family: var(--display); font-size: 17px; font-weight: 700; color: var(--fg-strong); }
+  & article p { margin: 16px 0; }
+  & article li::marker { color: var(--accent); font-weight: 800; }
+  & article a {
+    color: var(--fg-strong); border-bottom: none; text-decoration: underline;
+    text-decoration-color: var(--accent); text-decoration-thickness: 3px; text-underline-offset: 4px;
+  }
+  & article a:hover { background: var(--accent); color: var(--on-accent); text-decoration-color: transparent; }
+  & article strong { font-weight: 750; }
+
+  & code {
+    font-size: 0.8em; border: none; border-radius: 6px; padding: 0.12em 0.4em;
+    background: var(--panel-2); color: var(--fg-strong);
+  }
+  & pre {
+    background: var(--ink-block); color: var(--on-ink); border: none; border-radius: 16px;
+    padding: 20px 22px; font-size: 13.5px;
+  }
+  & pre code { color: var(--on-ink); font-size: inherit; padding: 0; background: none; }
+  & pre[data-lang]::before { text-transform: none; letter-spacing: 0; font-family: var(--display); font-weight: 700; font-size: 12px; color: #8088b8; top: 10px; right: 16px; }
+  & .code-bar { background: var(--ink-block); border-radius: 0 15px 0 12px; }
+  & .code-btn {
+    font-family: var(--display); font-weight: 600; font-size: 12px; border-radius: 999px;
+    background: transparent; color: var(--on-ink); border: 1.5px solid #4a5080;
+  }
+  & .code-btn:hover { color: #fff; border-color: #fff; }
+  & .code-btn[aria-pressed="true"] { color: var(--ink-block); background: #ffd23f; border-color: #ffd23f; }
+  & .pz-btn { font-family: var(--display); font-weight: 700; border-radius: 999px; border: 2px solid var(--fg-strong); background: var(--bg); color: var(--fg-strong); }
+  & .pz-btn:hover { background: var(--fg-strong); color: var(--bg); }
+
+  & .tablewrap { margin: 28px 0; }
+  & table { font-size: 15px; }
+  & th {
+    background: none; text-transform: none; letter-spacing: 0; font-size: 14px; font-weight: 800;
+    color: var(--fg-strong); border-bottom: 3px solid var(--fg-strong); padding: 10px 14px 10px 0;
+  }
+  & td { padding: 11px 14px 11px 0; border-bottom: 1px solid var(--border); }
+  & td:first-child { font-weight: 600; color: var(--fg-strong); }
+  & tbody tr:hover td { background: var(--panel); }
+
+  & .note, & .warn, & .ok {
+    border: none; border-radius: 18px; padding: 22px 26px; font-size: 17px; font-weight: 500; line-height: 1.5;
+  }
+  & .note { background: var(--accent); color: var(--on-accent); }
+  & .warn { background: var(--warn-bg); color: var(--warn-fg); }
+  & .ok { background: var(--ok-bg); color: var(--ok-fg); }
+  & .note code, & .warn code, & .ok code { background: rgb(0 0 0 / 0.14); color: inherit; }
+  & .note b, & .warn b, & .ok b { font-weight: 800; }
+
+  & blockquote {
+    position: relative; border-left: none; margin: 44px 0; padding: 0 0 0 44px;
+    font-size: 25px; line-height: 1.28; font-weight: 650; letter-spacing: -0.02em; color: var(--fg-strong);
+  }
+  & blockquote::before {
+    content: "«"; position: absolute; left: -4px; top: -14px; font-size: 72px; line-height: 1;
+    font-weight: 900; color: var(--accent);
+  }
+  & blockquote code { font-size: 0.6em; }
+  & .cards { gap: 28px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); margin: 28px 0; }
+  & .card {
+    border: none; border-top: 5px solid var(--fg-strong); border-radius: 0; background: none;
+    padding: 14px 0 0; font-size: 15.5px; line-height: 1.5; color: var(--muted);
+  }
+  & .card:hover { border-color: var(--accent); }
+  & .card h4 { font-size: 21px; font-weight: 800; letter-spacing: -0.02em; color: var(--fg-strong); margin: 0 0 6px; }
+  & kbd { font-family: var(--display); font-weight: 700; border-radius: 6px; border: 2px solid var(--fg-strong); background: var(--bg); color: var(--fg-strong); }
+
+  & pre.mermaid[data-processed] { border-radius: 18px; border: 3px solid var(--fg-strong); background: var(--bg); }
+  & .mermaid-modal .bar { border-bottom: 3px solid var(--fg-strong); }
+
+  @media (min-width: 1080px) {
+    & nav.toc { top: 96px; font-size: 14.5px; line-height: 1.3; font-weight: 600; }
+    & nav.toc .toc-title {
+      text-transform: none; letter-spacing: -0.01em; font-size: 16px; font-weight: 800;
+      color: var(--fg-strong); margin-bottom: 14px;
+    }
+    & nav.toc a { border-left: none; padding: 6px 10px; margin-left: -10px; border-radius: 8px; color: var(--faint); }
+    & nav.toc a.d3 { padding-left: 24px; font-size: 13.5px; font-weight: 500; }
+    & nav.toc a:hover { color: var(--fg-strong); }
+    & nav.toc a.active { background: var(--accent); color: var(--on-accent); }
+  }
+
+  & footer.doc {
+    font-family: var(--display); font-weight: 700; font-size: 14px; color: var(--fg-strong);
+    border-top: 3px solid var(--fg-strong);
+  }
+  & footer.doc a { color: var(--fg-strong); }
+}
+
+
+/* ---------- 4. Сумерки ---------- */
+@keyframes dusk-progress { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+
+html[data-v="dusk"] {
+  color-scheme: dark;
+  --bg: #1f1c24; --panel: #27232d; --panel-2: #302b37; --border: #3a3542; --border-strong: #514a5c;
+  --fg: #dbd4ca; --fg-strong: #f4eee5; --muted: #afa89e; --faint: #8d867d; --dim: #645e6b;
+  --accent: #e8aa5e; --accent-strong: #f5c68a; --amber: #e8aa5e; --red: #eb8f86; --emerald: #a3cc9f; --violet: #bca6e6;
+  --rail: #1a1720;
+  --sans: "Commissioner", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --page: 860px;
+  --mm-bg: #27232d; --mm-node: #302b37; --mm-border: #645e6b; --mm-line: #8d867d;
+
+  &[data-theme="light"] {
+    color-scheme: light;
+    --bg: #efeef2; --panel: #f8f7fa; --panel-2: #e5e3ea; --border: #d6d3dc; --border-strong: #bab5c3;
+    --fg: #2b2731; --fg-strong: #16131b; --muted: #57515f; --faint: #746e7e; --dim: #a7a1b0;
+    --accent: #a05a06; --accent-strong: #7c4502; --amber: #a05a06; --red: #b0392e; --emerald: #3b783a; --violet: #6b4fb0;
+    --rail: #e6e4ea;
+    --mm-bg: #f8f7fa; --mm-node: #efeef2; --mm-border: #a7a1b0; --mm-line: #746e7e;
+  }
+
+  & body { font-family: var(--sans); font-size: 17px; line-height: 1.78; font-weight: 380; -webkit-font-smoothing: antialiased; }
+
+  & .topbar { background: color-mix(in srgb, var(--bg) 80%, transparent); border-bottom-color: transparent; backdrop-filter: blur(14px); }
+  & .topbar-inner { font-size: 13px; }
+  & .brand { font-family: var(--sans); font-size: 13.5px; color: var(--faint); }
+  & .chip, & button.chip {
+    font-family: var(--sans); font-size: 12.5px; border-radius: 999px; border-color: transparent;
+    background: var(--panel); color: var(--muted); padding: 3px 11px;
+  }
+  & a.chip:hover, & button.chip:hover { background: var(--panel-2); color: var(--fg-strong); border-color: transparent; }
+  & .chip[aria-expanded="true"] { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel)); border-color: transparent; }
+  & .share-panel { background: var(--panel); border-top: none; }
+  & .share-url { border-radius: 8px; }
+
+  & .wrap { padding-top: 64px; grid-template-columns: minmax(0, 1fr); }
+  & article { max-width: 700px; }
+
+  /* Оглавление — постоянная панель слева, по её правому краю идёт полоса прочитанного. */
+  @media (min-width: 1080px) {
+    & body { padding-left: 264px; }
+    & body::before {
+      content: ""; position: fixed; z-index: 21; left: 263px; top: 0; width: 2px; height: 100vh;
+      background: var(--accent); transform-origin: top; transform: scaleY(0);
+      animation: dusk-progress linear both; animation-timeline: scroll(root);
+    }
+    & .wrap { grid-template-columns: minmax(0, 1fr); }
+    & nav.toc {
+      position: fixed; z-index: 20; left: 0; top: 0; bottom: 0; width: 264px; max-height: none; align-self: stretch;
+      padding: 28px 22px 40px 26px; background: var(--rail); border-right: 1px solid var(--border);
+      font-size: 14px; line-height: 1.4;
+    }
+    & nav.toc .toc-title {
+      text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 600; color: var(--fg-strong);
+      margin: 0 0 22px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
+    }
+    & nav.toc a { border-left: none; padding: 7px 10px; margin: 1px 0; border-radius: 8px; color: var(--faint); }
+    & nav.toc a.d3 { padding-left: 24px; font-size: 13px; }
+    & nav.toc a:hover { color: var(--fg-strong); background: var(--panel); }
+    & nav.toc a.active { color: var(--fg-strong); background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+  }
+
+  & header.doc { margin-bottom: 48px; }
+  & header.doc h1 {
+    font-family: var(--sans); font-weight: 500; font-size: 40px; line-height: 1.15;
+    letter-spacing: -0.025em; margin-bottom: 16px; text-wrap: balance;
+  }
+  & .meta { font-family: var(--sans); font-size: 13.5px; color: var(--faint); gap: 8px; }
+  & .meta > span:not(.tag):has(+ .tag), & .meta > span:not(.tag):last-child { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
+  & .tag { border: none; border-radius: 999px; background: var(--panel-2); color: var(--muted); padding: 2px 10px; font-size: 12.5px; }
+
+  & article h2 {
+    font-family: var(--sans); font-size: 25px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3;
+    border-bottom: none; padding-bottom: 0; margin: 64px 0 14px;
+  }
+  & article h3 { font-family: var(--sans); font-size: 18.5px; font-weight: 600; color: var(--accent); margin: 36px 0 8px; }
+  & article h4 { font-size: 15.5px; color: var(--fg-strong); }
+  & article p { margin: 16px 0; }
+  & article li { margin: 8px 0; }
+  & article li::marker { color: var(--accent); }
+  & article a { color: var(--accent); border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+  & article a:hover { color: var(--accent-strong); border-bottom-color: currentColor; }
+  & article strong { font-weight: 620; }
+
+  & code { font-size: 0.8em; border: none; border-radius: 6px; background: var(--panel-2); color: var(--fg-strong); }
+  & pre code { font-size: inherit; padding: 0; background: none; color: var(--fg); }
+  & pre { background: var(--panel); border: none; border-radius: 14px; padding: 18px 22px; font-size: 13px; line-height: 1.75; }
+  & pre[data-lang]::before { text-transform: none; letter-spacing: 0; font-family: var(--sans); font-size: 12px; top: 10px; right: 16px; }
+  & .code-bar { background: var(--panel); border-radius: 0 13px 0 10px; }
+  & .code-btn, & .pz-btn { font-family: var(--sans); font-size: 12px; border-radius: 999px; border-color: transparent; background: var(--panel-2); }
+  & .code-btn:hover, & .pz-btn:hover { border-color: transparent; background: var(--border); }
+
+  & .tablewrap { margin: 24px 0; border-radius: 14px; background: var(--panel); padding: 6px 4px; }
+  & table { font-size: 14.5px; }
+  & th {
+    background: none; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 500;
+    color: var(--faint); border-bottom: 1px solid var(--border); padding: 10px 14px;
+  }
+  & td { padding: 10px 14px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); }
+  & tbody tr:last-child td { border-bottom: none; }
+  & tbody tr:hover td { background: none; }
+
+  & .note, & .warn, & .ok {
+    position: relative; border: none; border-radius: 14px; font-size: 15.5px; padding: 16px 20px 16px 42px;
+    background: color-mix(in srgb, var(--c) 11%, var(--bg));
+  }
+  & .note { --c: var(--violet); }
+  & .warn { --c: var(--red); }
+  & .ok { --c: var(--emerald); }
+  & .note::before, & .warn::before, & .ok::before {
+    content: ""; position: absolute; left: 19px; top: 1.45em; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--c); box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent);
+  }
+
+  & blockquote { border-left: 2px solid var(--accent); color: var(--muted); font-size: 19px; line-height: 1.6; padding-left: 20px; margin: 28px 0; }
+  & .cards { gap: 12px; }
+  & .card { border: none; border-radius: 14px; background: var(--panel); padding: 16px 18px; font-size: 14.5px; line-height: 1.6; color: var(--muted); }
+  & .card:hover { background: var(--panel-2); }
+  & .card h4 { font-size: 15.5px; color: var(--fg-strong); margin-bottom: 4px; }
+  & kbd { font-family: var(--sans); border-radius: 6px; }
+
+  & pre.mermaid[data-processed] { border: none; border-radius: 14px; }
+
+  & footer.doc { max-width: var(--page); border-top: none; font-family: var(--sans); font-size: 13px; color: var(--dim); }
+}
+
+
+/* ---------- 5. Markdown ---------- */
+html[data-v="md"] {
+  color-scheme: light;
+  --bg: #f6f7f9; --panel: #ffffff; --panel-2: #eaedf1; --border: #d9dee5; --border-strong: #b7c0cc;
+  --fg: #2a3038; --fg-strong: #0f141a; --muted: #525b67; --faint: #7a8390; --dim: #a9b1bc;
+  --accent: #b1306e; --accent-strong: #8c2257; --amber: #946000; --red: #c0342b; --emerald: #2f7d4f; --violet: #6a4bc4;
+  --syntax: #a9b1bc;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --page: 1060px;
+  --mm-bg: #ffffff; --mm-node: #f6f7f9; --mm-border: #7a8390; --mm-line: #7a8390;
+
+  &[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1b1e24; --panel: #21252c; --panel-2: #2a2f37; --border: #343a44; --border-strong: #4b5361;
+    --fg: #cdd3dc; --fg-strong: #f1f4f8; --muted: #a0a9b6; --faint: #7f8894; --dim: #59626f;
+    --accent: #f283b8; --accent-strong: #f8abd0; --amber: #e3b45f; --red: #f28b82; --emerald: #8bd3a3; --violet: #b39df5;
+    --syntax: #59626f;
+    --mm-bg: #21252c; --mm-node: #2a2f37; --mm-border: #7f8894; --mm-line: #7f8894;
+  }
+
+  & body {
+    font-family: var(--mono); font-size: 14.5px; line-height: 1.75;
+    font-variant-ligatures: none; -webkit-font-smoothing: antialiased;
+  }
+
+  & .topbar { background: var(--panel); border-bottom-color: var(--border); backdrop-filter: none; }
+  & .topbar-inner { font-size: 13px; gap: 4px; }
+  & .brand { font-family: var(--mono); font-size: 13px; color: var(--fg-strong); }
+  & .brand::after { content: " / reverse-ip.md"; color: var(--faint); }
+  & .chip, & button.chip {
+    font-family: var(--mono); font-size: 12.5px; border: none; background: none; border-radius: 4px;
+    color: var(--muted); padding: 2px 6px;
+  }
+  & .chip::before { content: "["; color: var(--syntax); }
+  & .chip::after { content: "]"; color: var(--syntax); }
+  & a.chip:hover, & button.chip:hover { color: var(--accent); background: var(--panel-2); border: none; }
+  & .chip[aria-expanded="true"] { color: var(--accent); }
+  & .share-panel { background: var(--panel); }
+  & .share-url { border-radius: 4px; font-size: 12.5px; }
+
+  & .wrap { padding-top: 48px; }
+  @media (min-width: 1080px) { & .wrap { grid-template-columns: minmax(0, 78ch) 1fr; } }
+
+  & header.doc { margin-bottom: 36px; }
+  & header.doc h1 { font-family: var(--mono); font-size: 25px; font-weight: 750; line-height: 1.35; letter-spacing: -0.01em; margin-bottom: 12px; }
+  & header.doc h1::before { content: "# "; color: var(--syntax); font-weight: 400; }
+  & .meta { font-size: 12px; color: var(--faint); gap: 10px; }
+  & .meta .dot { display: none; }
+  & .meta > span:first-child::before { content: "created: "; color: var(--syntax); }
+  & .meta > span:not(.tag):has(+ .tag)::before, & .meta > span:not(.tag):last-child::before { content: "uuid: "; color: var(--syntax); }
+  & .tag { border: none; background: none; padding: 0; font-size: 12px; color: var(--accent); }
+  & .tag::before { content: "#"; }
+
+  & article h2, & article h3, & article h4 { font-family: var(--mono); color: var(--fg-strong); border-bottom: none; padding-bottom: 0; letter-spacing: 0; }
+  & article h2 { font-size: 18px; font-weight: 750; margin: 44px 0 12px; }
+  & article h3 { font-size: 15.5px; font-weight: 700; margin: 30px 0 8px; }
+  & article h4 { font-size: 14.5px; font-weight: 700; }
+  & article h2::before { content: "## "; color: var(--syntax); font-weight: 400; }
+  & article h3::before { content: "### "; color: var(--syntax); font-weight: 400; }
+  & article h4::before { content: "#### "; color: var(--syntax); font-weight: 400; }
+  & article strong { font-weight: 750; }
+  & article strong::before, & article strong::after { content: "**"; color: var(--syntax); font-weight: 400; }
+  & article em::before, & article em::after { content: "_"; color: var(--syntax); }
+  & article a { color: var(--accent); border-bottom: none; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+  & article a::before { content: "["; color: var(--syntax); display: inline-block; }
+  & article a::after { content: "]"; color: var(--syntax); display: inline-block; }
+  & article a:hover { text-decoration-color: currentColor; }
+
+  & article ul { list-style: none; padding-left: 2ch; }
+  & article ul > li::before { content: "-"; color: var(--accent); display: inline-block; width: 2ch; margin-left: -2ch; }
+  & article ol { padding-left: 3ch; }
+  & article ol > li::marker { color: var(--accent); }
+  & article hr { border-top: 1px dashed var(--border-strong); }
+
+  & code { font-size: 1em; border: none; background: none; padding: 0; color: var(--violet); }
+  & article :not(pre) > code::before, & article :not(pre) > code::after { content: "`"; color: var(--syntax); }
+  & pre { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; font-size: 13.5px; padding: 12px 18px; }
+  & pre code { color: var(--fg); }
+  /* Ограды блока кода — строками над и под кодом, язык из data-lang. */
+  & article pre:not(.mermaid)::before {
+    content: "```" attr(data-lang); position: static; display: block; color: var(--syntax);
+    text-transform: none; letter-spacing: 0; font-size: inherit;
+  }
+  & article pre:not(.mermaid)::after { content: "```"; display: block; color: var(--syntax); }
+  & .code-bar { background: var(--panel); border-radius: 0 3px 0 4px; }
+  & .code-btn, & .pz-btn { font-family: var(--mono); font-size: 11.5px; border-radius: 4px; background: var(--panel); }
+
+  & .tablewrap { margin: 20px 0; }
+  & table { font-size: 13px; border-left: 1px solid var(--border-strong); }
+  & th, & td { border-right: 1px solid var(--border-strong); border-bottom: 1px dashed var(--border); padding: 6px 12px; }
+  & th {
+    background: none; text-transform: none; letter-spacing: 0; font-size: 13px; font-weight: 750;
+    color: var(--fg-strong); border-bottom: 1px solid var(--border-strong);
+  }
+  & tbody tr:hover td { background: var(--panel-2); }
+
+  & .note, & .warn, & .ok {
+    border: none; border-left: 2px solid var(--c); border-radius: 0; font-size: 14px; padding: 8px 16px;
+    background: color-mix(in srgb, var(--c) 7%, transparent);
+  }
+  & .note { --c: var(--violet); }
+  & .warn { --c: var(--red); }
+  & .ok { --c: var(--emerald); }
+  & .note::before { content: "> [!NOTE]"; }
+  & .warn::before { content: "> [!WARNING]"; }
+  & .ok::before { content: "> [!TIP]"; }
+  & .note::before, & .warn::before, & .ok::before { display: block; color: var(--c); font-weight: 700; margin-bottom: 2px; }
+
+  & blockquote { border-left: none; padding-left: 2ch; position: relative; color: var(--muted); font-style: italic; }
+  & blockquote::before { content: ">"; position: absolute; left: 0; color: var(--accent); font-style: normal; }
+  & .cards { gap: 10px; }
+  & .card { border: 1px dashed var(--border-strong); border-radius: 4px; background: none; font-size: 13px; line-height: 1.65; color: var(--muted); }
+  & .card:hover { border-style: solid; border-color: var(--accent); }
+  & .card h4 { font-size: 13.5px; }
+  & kbd { font-family: var(--mono); border-radius: 4px; }
+
+  & pre.mermaid { color: var(--faint); }
+  & pre.mermaid[data-processed] { border-radius: 4px; border: 1px dashed var(--border-strong); background: var(--panel); }
+
+  @media (min-width: 1080px) {
+    & nav.toc { top: 80px; font-size: 12.5px; line-height: 1.5; padding-left: 8px; }
+    & nav.toc .toc-title { text-transform: none; letter-spacing: 0; font-size: 12.5px; color: var(--faint); font-weight: 400; }
+    & nav.toc .toc-title::before { content: "<!-- "; color: var(--syntax); }
+    & nav.toc .toc-title::after { content: " -->"; color: var(--syntax); }
+    & nav.toc a { border-left: none; padding: 2px 0; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    & nav.toc a.d2::before { content: "## "; color: var(--syntax); }
+    & nav.toc a.d3 { padding-left: 0; font-size: 12px; }
+    & nav.toc a.d3::before { content: "### "; color: var(--syntax); }
+    & nav.toc a:hover { color: var(--fg-strong); }
+    & nav.toc a.active { color: var(--accent); background: none; }
+  }
+
+  & footer.doc { font-size: 12px; border-top: 1px dashed var(--border-strong); }
+  & footer.doc::before { content: "EOF"; color: var(--syntax); margin-right: 8px; }
+}
+
+
+/* ---------- переключатель демо: вне вариантов, свой стиль ---------- */
+#demo-switch, #demo-switch-tab {
+  position: fixed; z-index: 1000; bottom: 16px; left: 50%; transform: translateX(-50%);
+  font: 500 12.5px/1.3 system-ui, -apple-system, sans-serif; letter-spacing: 0;
+  color: #f5f5f7; background: rgb(28 28 34 / 0.92);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 0.12); border-radius: 14px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.35);
+}
+#demo-switch { width: min(860px, calc(100vw - 24px)); padding: 10px; }
+#demo-switch[hidden], #demo-switch-tab[hidden] { display: none !important; }
+#demo-switch .ds-about { margin: 0 4px 8px; color: rgb(245 245 247 / 0.7); font-weight: 400; font-size: 12px; }
+#demo-switch .ds-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#demo-switch .ds-group {
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 2px;
+  background: rgb(255 255 255 / 0.06); border-radius: 10px;
+}
+#demo-switch .ds-group:first-child { flex: 1; }
+#demo-switch button, #demo-switch-tab {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 8px; color: rgb(245 245 247 / 0.72);
+}
+#demo-switch button:hover { color: #fff; background: rgb(255 255 255 / 0.08); }
+#demo-switch button[aria-checked="true"] { color: #111; background: #f5f5f7; }
+#demo-switch button:focus-visible, #demo-switch-tab:focus-visible { outline: 2px solid #7aa7ff; outline-offset: 1px; }
+#demo-switch .ds-key {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px;
+  font-size: 10.5px; background: rgb(255 255 255 / 0.12);
+}
+#demo-switch button[aria-checked="true"] .ds-key { background: rgb(0 0 0 / 0.1); }
+#demo-switch .ds-hide { padding: 6px 9px; }
+#demo-switch-tab { padding: 8px 14px; border-radius: 999px; color: #f5f5f7; }
+@media print { #demo-switch, #demo-switch-tab { display: none; } }
+/* Панель переключателя не должна прятать конец статьи. */
+body { padding-bottom: 110px; }
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="/">notes.kaidstor.ru</a>
+    <span class="spacer"></span>
+    <a class="chip" href="/0f0f9d4c-2b1e-4a7e-9d3f-6a1c8e2b4d51/edit">править</a>
+    <a class="chip" href="/0f0f9d4c-2b1e-4a7e-9d3f-6a1c8e2b4d51/raw">markdown</a>
+    <button class="chip" type="button" data-act="share" aria-expanded="false" aria-controls="share-panel">поделиться</button>
+    <button class="chip danger" type="button" data-act="delete" data-uuid="0f0f9d4c-2b1e-4a7e-9d3f-6a1c8e2b4d51" data-title="Reverse IP: поиск доменов на хосте">удалить</button>
+  </div>
+  <div class="share-panel" id="share-panel" data-uuid="0f0f9d4c-2b1e-4a7e-9d3f-6a1c8e2b4d51" hidden>
+    <div class="share-inner">
+      <div class="share-row">
+        <span class="share-hint">Ссылка без токена на</span>
+        <button class="chip" type="button" data-ttl="3600">1 час</button>
+        <button class="chip" type="button" data-ttl="86400">1 день</button>
+        <button class="chip" type="button" data-ttl="604800">7 дней</button>
+        <span class="share-status" data-role="status"></span>
+      </div>
+      <div class="share-row" data-role="result" hidden>
+        <input class="share-url" type="text" readonly spellcheck="false" data-role="url">
+        <button class="chip" type="button" data-act="copy">копировать</button>
+        <span class="share-exp" data-role="expiry"></span>
+      </div>
+      <ul class="share-list" data-role="list" hidden></ul>
+    </div>
+  </div>
+</div>
+<div class="wrap">
+  <div>
+    <header class="doc">
+      <h1>Reverse IP: поиск доменов на хосте</h1>
+      <div class="meta">
+        <span>27 июля 2026 г.</span>
+        <span class="dot">·</span><span>обновлено 18 сент. 2026 г.</span>
+        <span class="dot">·</span>
+        <span>0f0f9d4c-2b1e-4a7e-9d3f-6a1c8e2b4d51</span>
+        <span class="tag">recon</span><span class="tag">whois</span><span class="tag">hidden-domains</span>
+      </div>
+    </header>
+    <article>
+<p>Продолжение §6 <code>related-domain-discovery.html</code> — разбор цены и вариантов реализации.</p>
+<h2 id="итог-одной-строкой">Итог одной строкой</h2>
+<p>Свой сборщик вместо API писать не стоит: reverse IP у WhoisXMLAPI стоит ~$0.005 за IP,
+экономить нечего, а покрытие собственного скана заведомо у́же. Свой TLS-скан имеет смысл
+<strong>в дополнение</strong> — он даёт то, чего нет в пассивных базах: состояние хоста прямо сейчас.</p>
+<div class="note">
+Цифры ниже порядковые: точный прайс DRS отдаётся только из личного кабинета, при внедрении сверить.
+</div>
+
+<h2 id="что-есть-в-коде-сейчас">Что есть в коде сейчас</h2>
+<p>Reverse IP как источник новых доменов не реализован нигде. Что есть похожего:</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Где</th>
+<th>Что делает</th>
+<th>Почему это не reverse IP</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>monitoring-kit/src/modules/dns-utils/dns-utils.service.ts:22</code></td>
+<td><code>dns.Resolver.reverse(ip)</code> в <code>getDomainsByIp()</code></td>
+<td>это <strong>PTR</strong>: одно-два технических имени хостера (<code>vps-12345.timeweb.ru</code>), а не список сайтов</td>
+</tr>
+<tr>
+<td><code>domainator</code> → <code>getIPsWithLightDomains()</code></td>
+<td>группирует «IP → домены» из таблицы <code>domainProjectIp</code></td>
+<td>только по доменам, уже лежащим в базе; новых соседей не открывает</td>
+</tr>
+<tr>
+<td><code>hidden-domains/…/reverse-whois-manager.service.ts</code></td>
+<td>reverse <strong>WHOIS</strong> через domainator → whoisxmlapi</td>
+<td>другой селектор (org), не IP</td>
+</tr>
+</tbody></table>
+</div>
+<h2 id="как-reverse-ip-устроен">Как reverse IP устроен</h2>
+<p>DNS обратного индекса <code>IP → все домены</code> не содержит: зона <code>in-addr.arpa</code> хранит обычно одну
+PTR-запись, и ставит её хостер, а не владелец сайта. Поэтому список доменов на хосте всегда
+берётся из внешних баз, наполненных пассивным DNS и сканами интернета:</p>
+<ul>
+<li><strong>Passive DNS / reverse-IP API</strong> — SecurityTrails, WhoisXMLAPI Reverse IP, ViewDNS, Netlas (лучшее покрытие .ru/.рф).</li>
+<li><strong>Сканеры портов с баннерами</strong> — Shodan, Censys: домены достаются из TLS-сертификата на <code>IP:443</code>.</li>
+<li><strong>Своими руками</strong> — скан 443 по IP и чтение <code>subject</code>/SAN; либо crt.sh по имени → резолв найденных имён.</li>
+</ul>
+<pre><code>example.ru → A 95.163.x.x → reverse-IP → [ shop.example.ru, blog-company.ru, cdn.other.com, ... ]</code></pre>
+<h2 id="цена-у-whoisxmlapi">Цена у WhoisXMLAPI</h2>
+<p>Reverse IP API входит в тот же <strong>Domain Research Suite</strong>, что и наш reverse-whois: тот же ключ
+<code>WHOIS_API_KEY</code>, <strong>тот же общий баланс DRS-кредитов</strong>. Отдельная подписка не нужна.</p>
+<div class="tablewrap"><table>
+<thead>
+<tr>
+<th>Продукт</th>
+<th>Кредитов за запрос</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Reverse WHOIS (используем сейчас, <code>mode: &#39;purchase&#39;</code>)</td>
+<td>1</td>
+</tr>
+<tr>
+<td><strong>Reverse IP</strong>, <code>includeAdditionalChecks=0</code></td>
+<td><strong>5</strong></td>
+</tr>
+<tr>
+<td>Reverse IP с wildcard/activeness-проверками, <code>=1</code></td>
+<td>7</td>
+</tr>
+<tr>
+<td>WHOIS History (выпилен в FB-728)</td>
+<td>50</td>
+</tr>
+</tbody></table>
+</div>
+<pre data-lang="ts"><code>const res = await fetch(
+  `https://reverse-ip.whoisxmlapi.com/api/v1?apiKey=${key}&amp;ip=${ip}&amp;from=${cursor}`,
+);
+const { result, size } = await res.json();
+if (size &gt;= 300) markShared(ip); // жирный IP — дальше не платим</code></pre>
+<h3 id="ловушка-общий-пул-кредитов">Ловушка: общий пул кредитов</h3>
+<div class="warn">
+При <code>credits === 0</code> крон <code>notifyForManyTokens</code> выставляет
+<code>_reverseWhoisExhausted = true</code> — <b>reverse-whois выключается целиком</b>.
+Reverse IP по 5 кредитов за запрос способен выесть кредиты основного сценария.
+</div>
+
+<h3 id="бесплатный-побочный-эффект-пагинации">Бесплатный побочный эффект пагинации</h3>
+<p>«Жирность» IP видна с первой страницы: вернулось 300 записей и курсор → шаред/CDN → дальше не
+платим и IP выбрасываем. Один запрос даёт и данные, и фильтр плотности.</p>
+<h2 id="свой-сборщик-что-работает-что-нет">Свой сборщик: что работает, что нет</h2>
+<div class="cards">
+  <div class="card"><h4>CT-логи (crt.sh)</h4>Индекс по имени, не по IP. Другой пивот: сертификаты → домены → резолв.</div>
+  <div class="card"><h4>TLS-скан IP:443</h4>Бесплатно и свежо, но при SNI виден только дефолтный vhost.</div>
+  <div class="card"><h4>Свой passive DNS</h4>Dataset-задача на годы: Rapid7 FDNS закрыт, OpenINTEL под соглашением.</div>
+  <div class="card"><h4>domainProjectIp</h4>Бесплатный reverse IP в границах нашей базы — верификатор кандидатов.</div>
+</div>
+
+<blockquote>
+<p>Reverse IP — не самостоятельный оракул, а слабый сигнал. Кандидаты идут в граф как
+<code>verify-only</code>, вес обратно пропорционален плотности IP.</p>
+</blockquote>
+<h2 id="рекомендуемая-схема">Рекомендуемая схема</h2>
+<p>По возрастанию цены, каждый следующий шаг работает по остатку от предыдущего:</p>
+<pre class="mermaid">flowchart LR
+  A[IP проекта] --&gt; B{CDN или&lt;br/&gt;хостинг?}
+  B -- да --&gt; X[отбросить]
+  B -- нет --&gt; C[domainProjectIp&lt;br/&gt;0₽]
+  C --&gt; D[TLS-скан :443&lt;br/&gt;0₽]
+  D --&gt; E[WhoisXMLAPI&lt;br/&gt;5 кредитов]
+  E -- &quot;≥300 записей&quot; --&gt; X
+  E --&gt; F[кандидаты verify-only]</pre>
+<ol>
+<li><strong>Внутренний индекс <code>domainProjectIp</code></strong> по всем проектам — 0₽, данные уже есть.</li>
+<li><strong>TLS-скан <code>IP:443</code> + SAN</strong> по IP-адресам проекта — 0₽, точный сигнал на выделенных хостах.</li>
+<li><strong>WhoisXMLAPI Reverse IP точечно</strong> — только по IP, прошедшим фильтр CDN/хостинг-диапазонов.</li>
+<li><strong>Netlas</strong> — если понадобится покрытие .ru/.рф лучше, чем у WhoisXMLAPI.</li>
+</ol>
+<div class="ok">
+Шаги 1–2 уже можно делать: данные и сканер есть, денег не стоят.
+</div>
+
+<h2 id="открытые-вопросы">Открытые вопросы</h2>
+<ul>
+<li>Сверить реальный курс DRS-кредита и остаток в кабинете перед бюджетированием.</li>
+<li>Откуда брать список CDN/хостинг-диапазонов для фильтра до запроса.</li>
+<li>Нужен ли отдельный лимит кредитов на reverse IP, чтобы не гасить reverse-whois.</li>
+</ul>
+<p>Быстрый переход к поиску на индексе — <kbd>⌘</kbd> <kbd>K</kbd>.</p>
+<h2 id="источники">Источники</h2>
+<ul>
+<li><a href="https://reverse-ip.whoisxmlapi.com/api/pricing" target="_blank" rel="noopener noreferrer">Reverse IP API — pricing</a></li>
+<li><a href="https://reverse-ip.whoisxmlapi.com/api/documentation/making-requests" target="_blank" rel="noopener noreferrer">Reverse IP API — making requests</a></li>
+<li><a href="https://drs.whoisxmlapi.com/pricing" target="_blank" rel="noopener noreferrer">Domain Research Suite — pricing</a></li>
+</ul>
+
+    </article>
+  </div>
+  <nav class="toc">
+  <div class="toc-title">Содержание</div>
+  <a class="d2" href="#итог-одной-строкой">Итог одной строкой</a>
+  <a class="d2" href="#что-есть-в-коде-сейчас">Что есть в коде сейчас</a>
+  <a class="d2" href="#как-reverse-ip-устроен">Как reverse IP устроен</a>
+  <a class="d2" href="#цена-у-whoisxmlapi">Цена у WhoisXMLAPI</a>
+  <a class="d3" href="#ловушка-общий-пул-кредитов">Ловушка: общий пул кредитов</a>
+  <a class="d3" href="#бесплатный-побочный-эффект-пагинации">Бесплатный побочный эффект пагинации</a>
+  <a class="d2" href="#свой-сборщик-что-работает-что-нет">Свой сборщик: что работает, что нет</a>
+  <a class="d2" href="#рекомендуемая-схема">Рекомендуемая схема</a>
+  <a class="d2" href="#открытые-вопросы">Открытые вопросы</a>
+  <a class="d2" href="#источники">Источники</a>
+</nav>
+</div>
+<footer class="doc">
+  <a href="/">notes.kaidstor.ru</a>
+  <span>·</span>
+  <a href="/0f0f9d4c-2b1e-4a7e-9d3f-6a1c8e2b4d51/raw">исходник</a>
+</footer>
+<script>
+(() => {
+  const links = [...document.querySelectorAll('nav.toc a')];
+  if (!links.length) return;
+
+  const nav = document.querySelector('nav.toc');
+  const targets = links
+    .map((link) => ({ link, heading: document.getElementById(decodeURIComponent(link.hash.slice(1))) }))
+    .filter((item) => item.heading);
+  if (!targets.length) return;
+
+  // Линия активации — под липкой шапкой: активен последний заголовок, который её пересёк.
+  const LINE = 88;
+  let current = null;
+
+  const activate = (item) => {
+    if (item === current) return;
+    current?.link.classList.remove('active');
+    current?.link.removeAttribute('aria-current');
+    current = item;
+    if (!current) return;
+    current.link.classList.add('active');
+    current.link.setAttribute('aria-current', 'true');
+
+    // Держим активный пункт в поле зрения, если оглавление само прокручивается.
+    // scrollIntoView() здесь нельзя: он утащил бы за собой всю страницу.
+    const navBox = nav.getBoundingClientRect();
+    const linkBox = current.link.getBoundingClientRect();
+    if (linkBox.top < navBox.top) nav.scrollTop -= navBox.top - linkBox.top;
+    else if (linkBox.bottom > navBox.bottom) nav.scrollTop += linkBox.bottom - navBox.bottom;
+  };
+
+  const sync = () => {
+    const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 4;
+    if (atBottom) return activate(targets[targets.length - 1]);
+
+    let found = null;
+    for (const item of targets) {
+      if (item.heading.getBoundingClientRect().top > LINE) break;
+      found = item;
+    }
+    activate(found ?? targets[0]);
+  };
+
+  let ticking = false;
+  const onScroll = () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { ticking = false; sync(); });
+  };
+
+  addEventListener('scroll', onScroll, { passive: true });
+  addEventListener('resize', onScroll, { passive: true });
+  sync();
+})();
+</script>
+<script>
+(() => {
+  const blocks = [...document.querySelectorAll('article pre:not(.mermaid)')];
+  if (!blocks.length) return;
+
+  const copy = async (text) => {
+    // Clipboard API доступен только в защищённом контексте — иначе execCommand.
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch (e) {}
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+    document.body.append(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    return ok;
+  };
+
+  const button = (label, title, cls) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'code-btn' + (cls ? ' ' + cls : '');
+    b.textContent = label;
+    b.title = title;
+    return b;
+  };
+
+  for (const pre of blocks) {
+    const wrap = document.createElement('div');
+    wrap.className = 'code-wrap';
+    pre.replaceWith(wrap);
+    wrap.append(pre);
+
+    const bar = document.createElement('div');
+    bar.className = 'code-bar';
+
+    const wrapBtn = button('перенос', 'Переносить длинные строки');
+    wrapBtn.setAttribute('aria-pressed', 'true');
+    wrapBtn.addEventListener('click', () => {
+      wrapBtn.setAttribute('aria-pressed', String(!pre.classList.toggle('nowrap')));
+    });
+
+    const copyBtn = button('копировать', 'Скопировать блок', 'copy');
+    let timer;
+    copyBtn.addEventListener('click', async () => {
+      const ok = await copy((pre.querySelector('code') ?? pre).textContent);
+      copyBtn.textContent = ok ? 'скопировано' : 'не вышло';
+      clearTimeout(timer);
+      timer = setTimeout(() => { copyBtn.textContent = 'копировать'; }, 1400);
+    });
+
+    bar.append(wrapBtn, copyBtn);
+    wrap.append(bar);
+  }
+})();
+</script>
+<script>
+(() => {
+  const btn = document.querySelector('button[data-act="delete"]');
+  if (!btn) return;
+
+  btn.addEventListener('click', async () => {
+    if (!confirm('Удалить заметку «' + btn.dataset.title + '»? Отменить будет нельзя.')) return;
+    btn.disabled = true;
+    try {
+      const res = await fetch('/api/notes/' + btn.dataset.uuid, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || 'HTTP ' + res.status);
+      }
+      location.href = '/';
+    } catch (e) {
+      alert('Не удалилось: ' + e.message);
+      btn.disabled = false;
+    }
+  });
+})();
+</script>
+<script>
+(() => {
+  const toggle = document.querySelector('button[data-act="share"]');
+  const panel = document.getElementById('share-panel');
+  if (!toggle || !panel) return;
+
+  const uuid = panel.dataset.uuid;
+  const status = panel.querySelector('[data-role="status"]');
+  const result = panel.querySelector('[data-role="result"]');
+  const urlInput = panel.querySelector('[data-role="url"]');
+  const expiry = panel.querySelector('[data-role="expiry"]');
+  const list = panel.querySelector('[data-role="list"]');
+  const copyBtn = panel.querySelector('button[data-act="copy"]');
+
+  const fmt = new Intl.DateTimeFormat('ru-RU', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+  const till = (iso) => 'до ' + fmt.format(new Date(iso));
+
+  const say = (text, bad) => {
+    status.textContent = text;
+    status.classList.toggle('bad', Boolean(bad));
+  };
+
+  const api = async (path, init) => {
+    const res = await fetch(path, init);
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'HTTP ' + res.status);
+    return body;
+  };
+
+  const chip = (label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip';
+    b.textContent = label;
+    return b;
+  };
+
+  const render = (shares) => {
+    list.replaceChildren();
+    for (const share of shares) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = share.url;
+      a.textContent = share.url.replace(/^https?:\/\//, '');
+      const exp = document.createElement('span');
+      exp.className = 'share-exp';
+      exp.textContent = till(share.expires_at);
+      const revoke = chip('отозвать');
+      revoke.addEventListener('click', async () => {
+        revoke.disabled = true;
+        try {
+          await api('/api/shares/' + share.token, { method: 'DELETE' });
+          if (urlInput.value === share.url) result.hidden = true;
+          await load();
+        } catch (e) {
+          say(e.message, true);
+          revoke.disabled = false;
+        }
+      });
+      li.append(a, exp, revoke);
+      list.append(li);
+    }
+    list.hidden = shares.length === 0;
+  };
+
+  const load = async () => {
+    try {
+      render((await api('/api/notes/' + uuid + '/shares')).shares);
+    } catch (e) {
+      say(e.message, true);
+    }
+  };
+
+  toggle.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    toggle.setAttribute('aria-expanded', String(open));
+    if (open) load();
+  });
+
+  for (const b of panel.querySelectorAll('button[data-ttl]')) {
+    b.addEventListener('click', async () => {
+      say('…');
+      try {
+        const share = await api('/api/notes/' + uuid + '/shares', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ttl: Number(b.dataset.ttl) }),
+        });
+        urlInput.value = share.url;
+        expiry.textContent = till(share.expires_at);
+        result.hidden = false;
+        say('');
+        urlInput.focus();
+        urlInput.select();
+        await load();
+      } catch (e) {
+        say(e.message, true);
+      }
+    });
+  }
+
+  let timer;
+  copyBtn.addEventListener('click', async () => {
+    let ok = false;
+    // Clipboard API есть только в защищённом контексте — на http остаётся execCommand.
+    try {
+      await navigator.clipboard.writeText(urlInput.value);
+      ok = true;
+    } catch (e) {
+      urlInput.focus();
+      urlInput.select();
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+    }
+    copyBtn.textContent = ok ? 'скопировано' : 'не вышло';
+    clearTimeout(timer);
+    timer = setTimeout(() => { copyBtn.textContent = 'копировать'; }, 1400);
+  });
+})();
+</script>
+<script>
+(async () => {
+  const nodes = [...document.querySelectorAll('pre.mermaid')];
+  if (!nodes.length) return;
+
+  // Шаг зума подбирался на живой схеме: 1.73 ≈ полтора прежних нажатия (1.44^1.5),
+  // колесо ускорено соразмерно, чтобы жест и кнопки ощущались одинаково.
+  const ZOOM_STEP = 1.73;
+  const WHEEL_STEP = 0.0048;
+
+  const palette = (dark) => window.__palette ? window.__palette() : dark
+    ? { background: '#09090b', mainBkg: '#18181b', nodeBorder: '#3f3f46', primaryColor: '#18181b',
+        primaryTextColor: '#e4e4e7', primaryBorderColor: '#3f3f46', secondaryColor: '#101013',
+        tertiaryColor: '#101013', lineColor: '#52525b', textColor: '#e4e4e7',
+        edgeLabelBackground: '#09090b', clusterBkg: '#101013', clusterBorder: '#27272a',
+        titleColor: '#fafafa' }
+    : { background: '#fafafa', mainBkg: '#f4f4f5', nodeBorder: '#d4d4d8', primaryColor: '#f4f4f5',
+        primaryTextColor: '#27272a', primaryBorderColor: '#d4d4d8', secondaryColor: '#ffffff',
+        tertiaryColor: '#ffffff', lineColor: '#a1a1aa', textColor: '#27272a',
+        edgeLabelBackground: '#fafafa', clusterBkg: '#ffffff', clusterBorder: '#e4e4e7',
+        titleColor: '#09090b' };
+
+  let mermaid;
+  try {
+    ({ default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'));
+  } catch (e) {
+    console.warn('[notes] mermaid не загрузился, схемы остались исходником', e);
+    return;
+  }
+
+  const sources = nodes.map((el) => el.textContent);
+  const dark = matchMedia('(prefers-color-scheme: dark)');
+
+  const draw = async () => {
+    nodes.forEach((el, i) => {
+      el.textContent = sources[i];
+      el.removeAttribute('data-processed');
+    });
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      // Публиковать может только владелец токена, поэтому HTML в подписях
+      // разрешён (нужен для <br/>), а скрипты вырезаются.
+      securityLevel: 'antiscript',
+      themeVariables: {
+        ...palette(dark.matches),
+        fontFamily: getComputedStyle(document.body).fontFamily,
+        fontSize: '13px',
+      },
+      flowchart: { htmlLabels: true, useMaxWidth: true },
+    });
+    try {
+      await mermaid.run({ nodes });
+    } catch (e) {
+      console.warn('[notes] схема не отрисована', e);
+      return;
+    }
+    nodes.forEach(decorate);
+  };
+
+  await document.fonts.ready;
+  await draw();
+  addEventListener('variantchange', draw);
+  dark.addEventListener('change', draw);
+
+  // --- pan/zoom: одна механика для врезки и просмотрщика ----------------------
+
+  /**
+   * Двигаем и масштабируем трансформом, а не прокруткой: скроллом панорама
+   * работает только там, где есть переполнение, — по второй оси схема стоит колом.
+   */
+  function panzoom(host, svg, pad) {
+    const stage = document.createElement('div');
+    stage.className = 'pz-stage';
+    svg.removeAttribute('style');
+    stage.append(svg);
+    host.append(stage);
+
+    const vb = (svg.getAttribute('viewBox') || '').split(/[s,]+/).map(Number);
+    const natW = vb[2] || svg.getBoundingClientRect().width || 1;
+    const natH = vb[3] || svg.getBoundingClientRect().height || 1;
+    svg.setAttribute('width', String(natW));
+    svg.setAttribute('height', String(natH));
+
+    let k = 1;
+    let x = 0;
+    let y = 0;
+    let onScale = null;
+
+    const apply = (animate) => {
+      stage.style.transition = animate ? 'transform 130ms ease-out' : 'none';
+      stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + k + ')';
+      if (onScale) onScale(k);
+    };
+
+    const fit = (animate) => {
+      const b = host.getBoundingClientRect();
+      k = Math.min((b.width - pad * 2) / natW, (b.height - pad * 2) / natH);
+      x = (b.width - natW * k) / 2;
+      y = (b.height - natH * k) / 2;
+      apply(animate);
+    };
+
+    // Точка под курсором остаётся на месте — иначе схема уезжает от того, что разглядывают.
+    const zoomAt = (factor, px, py, animate) => {
+      const next = Math.min(8, Math.max(0.02, k * factor));
+      x = px - (px - x) * (next / k);
+      y = py - (py - y) * (next / k);
+      k = next;
+      apply(animate);
+    };
+
+    const zoom = (factor) => {
+      const b = host.getBoundingClientRect();
+      zoomAt(factor, b.width / 2, b.height / 2, true);
+    };
+
+    const setScale = (value) => {
+      const b = host.getBoundingClientRect();
+      zoomAt(value / k, b.width / 2, b.height / 2, true);
+    };
+
+    let wheelIdle;
+    host.addEventListener(
+      'wheel',
+      (e) => {
+        if (!e.ctrlKey && !e.metaKey) return;
+        e.preventDefault();
+        clearTimeout(wheelIdle);
+        const b = host.getBoundingClientRect();
+        zoomAt(Math.exp(-e.deltaY * WHEEL_STEP), e.clientX - b.left, e.clientY - b.top, false);
+      },
+      { passive: false },
+    );
+
+    let drag = null;
+    host.addEventListener('dragstart', (e) => e.preventDefault());
+    host.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      drag = { px: e.clientX, py: e.clientY, x, y };
+      host.setPointerCapture(e.pointerId);
+      host.classList.add('grabbing');
+    });
+    host.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      x = drag.x + (e.clientX - drag.px);
+      y = drag.y + (e.clientY - drag.py);
+      apply(false);
+    });
+    const endDrag = () => {
+      drag = null;
+      host.classList.remove('grabbing');
+    };
+    host.addEventListener('pointerup', endDrag);
+    host.addEventListener('pointercancel', endDrag);
+    host.addEventListener('dblclick', () => fit(true));
+
+    addEventListener('resize', () => fit(false));
+
+    return {
+      fit,
+      zoom,
+      setScale,
+      onScale: (fn) => {
+        onScale = fn;
+        fn(k);
+      },
+    };
+  }
+
+  function button(label, title, act) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'pz-btn';
+    b.textContent = label;
+    b.title = title;
+    b.setAttribute('aria-label', title);
+    if (act) b.dataset.act = act;
+    return b;
+  }
+
+  // --- врезка -----------------------------------------------------------------
+
+  function decorate(pre) {
+    let wrap = pre.parentElement;
+    if (!wrap?.classList.contains('mermaid-wrap')) {
+      wrap = document.createElement('div');
+      wrap.className = 'mermaid-wrap';
+      pre.replaceWith(wrap);
+      wrap.append(pre);
+    }
+    // Перерисовка (смена темы) заново наполняет pre — панель собираем заново.
+    wrap.querySelector('.mermaid-bar')?.remove();
+
+    const svg = pre.querySelector('svg');
+    if (!svg) return;
+
+    const host = document.createElement('div');
+    host.className = 'pz';
+    pre.textContent = '';
+    pre.append(host);
+
+    const pz = panzoom(host, svg, 14);
+    pz.fit(false);
+
+    const bar = document.createElement('div');
+    bar.className = 'mermaid-bar';
+    const out = button('−', 'Отдалить');
+    const inn = button('+', 'Приблизить');
+    const fit = button('вписать', 'Вписать схему целиком');
+    const full = button('⤢', 'Открыть во весь экран');
+    out.addEventListener('click', () => pz.zoom(1 / ZOOM_STEP));
+    inn.addEventListener('click', () => pz.zoom(ZOOM_STEP));
+    fit.addEventListener('click', () => pz.fit(true));
+    full.addEventListener('click', () => viewer(pre));
+    bar.append(out, inn, fit, full);
+    wrap.append(bar);
+  }
+
+  // --- просмотрщик ------------------------------------------------------------
+
+  function viewer(pre) {
+    const svg = pre.querySelector('svg');
+    if (!svg) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'mermaid-modal';
+    modal.innerHTML =
+      '<div class="bar">' +
+      '<button class="pz-btn" data-act="out" title="Отдалить">−</button>' +
+      '<span class="hint" data-role="scale">100%</span>' +
+      '<button class="pz-btn" data-act="in" title="Приблизить">+</button>' +
+      '<button class="pz-btn" data-act="fit">вписать</button>' +
+      '<button class="pz-btn" data-act="one">1:1</button>' +
+      '<span class="spacer"></span>' +
+      '<span class="hint">Ctrl + колесо — зум · тянуть мышью — двигать · двойной клик — вписать</span>' +
+      '<button class="pz-btn" data-act="full">во весь экран</button>' +
+      '<button class="pz-btn" data-act="close" title="Закрыть (Esc)">✕</button>' +
+      '</div>' +
+      '<div class="pz"></div>';
+
+    const host = modal.querySelector('.pz');
+    const label = modal.querySelector('[data-role="scale"]');
+    document.body.append(modal);
+    document.body.style.overflow = 'hidden';
+
+    const pz = panzoom(host, svg.cloneNode(true), 24);
+    pz.onScale((k) => {
+      label.textContent = Math.round(k * 100) + '%';
+    });
+    pz.fit(false);
+
+    // Подпись кнопки ведём от состояния браузера, а не от своего флага: выйти из
+    // полного экрана можно по Esc или F11, мимо нашего обработчика.
+    const fullBtn = modal.querySelector('[data-act="full"]');
+    const syncFull = () => {
+      fullBtn.textContent =
+        document.fullscreenElement === modal ? 'выйти из полного экрана' : 'во весь экран';
+    };
+    document.addEventListener('fullscreenchange', syncFull);
+
+    const close = () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      modal.remove();
+      document.body.style.overflow = '';
+      removeEventListener('keydown', onKey);
+      document.removeEventListener('fullscreenchange', syncFull);
+    };
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') close();
+      if (e.key === '+' || e.key === '=') pz.zoom(ZOOM_STEP);
+      if (e.key === '-') pz.zoom(1 / ZOOM_STEP);
+      if (e.key === '0') pz.fit(true);
+    };
+    addEventListener('keydown', onKey);
+
+    modal.querySelector('.bar').addEventListener('click', (e) => {
+      const act = e.target.dataset?.act;
+      if (act === 'in') pz.zoom(ZOOM_STEP);
+      if (act === 'out') pz.zoom(1 / ZOOM_STEP);
+      if (act === 'fit') pz.fit(true);
+      if (act === 'one') pz.setScale(1);
+      if (act === 'close') close();
+      if (act === 'full') {
+        if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+        else modal.requestFullscreen().catch(() => {});
+      }
+    });
+  }
+})();
+</script>
+<script>(() => {
+  const VARIANTS = [
+    { id: 'current', key: '0', name: 'Сейчас', about: 'Как на проде: zinc-шкала и sky-акцент из sql-kai.' },
+    { id: 'book', key: '1', name: 'Книга', about: 'Literata, узкая колонка, таблицы в книжном стиле, врезки с заголовком в начале строки.' },
+    { id: 'draft', key: '2', name: 'Чертёж', about: 'Калька с сеткой, рамка и штамп по ГОСТ, нумерация разделов, врезки со штриховкой.' },
+    { id: 'poster', key: '3', name: 'Плакат', about: 'Onest, огромный заголовок, ультрамарин, врезки сплошной заливкой.' },
+    { id: 'dusk', key: '4', name: 'Сумерки', about: 'Тёмная по умолчанию, янтарный акцент, оглавление на левой панели с полосой прочитанного.' },
+    { id: 'md', key: '5', name: 'Markdown', about: 'JetBrains Mono, разметка markdown видна: #, **, ```, [ссылки].' },
+  ];
+  const THEMES = [
+    { id: 'auto', name: 'авто' },
+    { id: 'light', name: 'светлая' },
+    { id: 'dark', name: 'тёмная' },
+  ];
+
+  const root = document.documentElement;
+  const media = matchMedia('(prefers-color-scheme: dark)');
+  let theme = new URLSearchParams(location.search).get('t') || localStorage.getItem('demo-theme') || 'auto';
+
+  const readVar = (name) => getComputedStyle(root).getPropertyValue(name).trim();
+  window.__palette = () => {
+    const v = (name, fallback) => readVar(name) || readVar(fallback);
+    return {
+      background: v('--mm-bg', '--panel'),
+      mainBkg: v('--mm-node', '--panel-2'),
+      primaryColor: v('--mm-node', '--panel-2'),
+      nodeBorder: v('--mm-border', '--border-strong'),
+      primaryBorderColor: v('--mm-border', '--border-strong'),
+      primaryTextColor: v('--mm-text', '--fg'),
+      textColor: v('--mm-text', '--fg'),
+      secondaryColor: v('--mm-bg', '--panel'),
+      tertiaryColor: v('--mm-bg', '--panel'),
+      lineColor: v('--mm-line', '--faint'),
+      edgeLabelBackground: v('--mm-bg', '--panel'),
+      clusterBkg: v('--mm-bg', '--panel'),
+      clusterBorder: v('--border', '--border'),
+      titleColor: v('--fg-strong', '--fg-strong'),
+    };
+  };
+
+  const bar = document.createElement('div');
+  bar.id = 'demo-switch';
+  bar.innerHTML = `
+    <p class="ds-about" data-role="about"></p>
+    <div class="ds-row">
+      <div class="ds-group" role="radiogroup" aria-label="Вариант оформления">
+        ${VARIANTS.map(
+          (v) =>
+            `<button type="button" role="radio" data-v="${v.id}" title="Клавиша ${v.key}"><span class="ds-key">${v.key}</span>${v.name}</button>`,
+        ).join('')}
+      </div>
+      <div class="ds-group" role="radiogroup" aria-label="Тема">
+        ${THEMES.map((t) => `<button type="button" role="radio" data-t="${t.id}" title="Клавиша T">${t.name}</button>`).join('')}
+      </div>
+      <button type="button" class="ds-hide" data-act="hide" title="Спрятать панель (H)">✕</button>
+    </div>`;
+  document.body.append(bar);
+
+  const tab = document.createElement('button');
+  tab.id = 'demo-switch-tab';
+  tab.type = 'button';
+  tab.hidden = true;
+  tab.textContent = 'варианты';
+  document.body.append(tab);
+
+  const about = bar.querySelector('[data-role="about"]');
+
+  const redraw = async () => {
+    await document.fonts.ready;
+    dispatchEvent(new Event('variantchange'));
+  };
+
+  const sync = () => {
+    for (const b of bar.querySelectorAll('[data-v]')) b.setAttribute('aria-checked', String(b.dataset.v === root.dataset.v));
+    for (const b of bar.querySelectorAll('[data-t]')) b.setAttribute('aria-checked', String(b.dataset.t === theme));
+    const current = VARIANTS.find((v) => v.id === root.dataset.v);
+    about.textContent = current ? current.about : '';
+  };
+
+  const setVariant = (id) => {
+    if (root.dataset.v === id) return;
+    root.dataset.v = id;
+    localStorage.setItem('demo-v', id);
+    const url = new URL(location.href);
+    url.searchParams.set('v', id);
+    history.replaceState(null, '', url);
+    sync();
+    redraw();
+  };
+
+  const applyTheme = () => {
+    const dark = theme === 'dark' || (theme === 'auto' && media.matches);
+    const next = dark ? 'dark' : 'light';
+    const changed = root.dataset.theme !== next;
+    root.dataset.theme = next;
+    sync();
+    if (changed) redraw();
+  };
+
+  const setTheme = (id) => {
+    theme = id;
+    localStorage.setItem('demo-theme', id);
+    applyTheme();
+  };
+
+  const toggleBar = (show) => {
+    bar.hidden = !show;
+    tab.hidden = show;
+  };
+
+  bar.addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.v) setVariant(b.dataset.v);
+    if (b.dataset.t) setTheme(b.dataset.t);
+    if (b.dataset.act === 'hide') toggleBar(false);
+  });
+  tab.addEventListener('click', () => toggleBar(true));
+  media.addEventListener('change', applyTheme);
+
+  addEventListener('keydown', (e) => {
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.closest?.('input, textarea, [contenteditable]')) return;
+    if (document.querySelector('.mermaid-modal')) return;
+    const v = VARIANTS.find((x) => x.key === e.key);
+    if (v) setVariant(v.id);
+    if (e.key === 't' || e.key === 'е') {
+      const i = THEMES.findIndex((t) => t.id === theme);
+      setTheme(THEMES[(i + 1) % THEMES.length].id);
+    }
+    if (e.key === 'h' || e.key === 'р') toggleBar(bar.hidden);
+  });
+
+  sync();
+})();
+</script>
+</body>
+</html>

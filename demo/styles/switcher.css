@@ -1,0 +1,37 @@
+
+/* ---------- переключатель демо: вне вариантов, свой стиль ---------- */
+#demo-switch, #demo-switch-tab {
+  position: fixed; z-index: 1000; bottom: 16px; left: 50%; transform: translateX(-50%);
+  font: 500 12.5px/1.3 system-ui, -apple-system, sans-serif; letter-spacing: 0;
+  color: #f5f5f7; background: rgb(28 28 34 / 0.92);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgb(255 255 255 / 0.12); border-radius: 14px;
+  box-shadow: 0 10px 40px rgb(0 0 0 / 0.35);
+}
+#demo-switch { width: min(860px, calc(100vw - 24px)); padding: 10px; }
+#demo-switch[hidden], #demo-switch-tab[hidden] { display: none !important; }
+#demo-switch .ds-about { margin: 0 4px 8px; color: rgb(245 245 247 / 0.7); font-weight: 400; font-size: 12px; }
+#demo-switch .ds-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#demo-switch .ds-group {
+  display: flex; flex-wrap: wrap; gap: 2px; padding: 2px;
+  background: rgb(255 255 255 / 0.06); border-radius: 10px;
+}
+#demo-switch .ds-group:first-child { flex: 1; }
+#demo-switch button, #demo-switch-tab {
+  all: unset; box-sizing: border-box; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 10px; border-radius: 8px; color: rgb(245 245 247 / 0.72);
+}
+#demo-switch button:hover { color: #fff; background: rgb(255 255 255 / 0.08); }
+#demo-switch button[aria-checked="true"] { color: #111; background: #f5f5f7; }
+#demo-switch button:focus-visible, #demo-switch-tab:focus-visible { outline: 2px solid #7aa7ff; outline-offset: 1px; }
+#demo-switch .ds-key {
+  display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 4px;
+  font-size: 10.5px; background: rgb(255 255 255 / 0.12);
+}
+#demo-switch button[aria-checked="true"] .ds-key { background: rgb(0 0 0 / 0.1); }
+#demo-switch .ds-hide { padding: 6px 9px; }
+#demo-switch-tab { padding: 8px 14px; border-radius: 999px; color: #f5f5f7; }
+@media print { #demo-switch, #demo-switch-tab { display: none; } }
+/* Панель переключателя не должна прятать конец статьи. */
+body { padding-bottom: 110px; }

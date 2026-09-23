@@ -1,50 +1,80 @@
 import { isStale, type NoteRow } from './db.ts';
 import { escapeHtml, type TocItem } from './render.ts';
 
-/** Визуальный язык приложения sql-kai: zinc-шкала, sky-акцент, мелкий шрифт,
- *  mono для технических значений. Инлайним, чтобы страница заметки была
- *  самодостаточной и не зависела от сборки фронта. */
+/** «Сумерки»: графитово-сливовая тёмная тема с янтарным акцентом, светлая — по
+ *  prefers-color-scheme. Инлайним, чтобы страница заметки была самодостаточной
+ *  и не зависела от сборки фронта. */
 const CSS = `
+/* Родные метрики Commissioner — ascent 102%, descent 21%: строчные сидят на ~15% кегля
+   ниже центра строки, и текст в кнопках и чипах уезжает вниз. Overrides уравнивают
+   их так, что центр x-высоты совпадает с центром строки. Держать одинаковыми в обоих
+   начертаниях, иначе кириллица и латиница в одной строке разъедутся по вертикали. */
+@font-face {
+  font-family: "Commissioner"; font-style: normal; font-weight: 300 700; font-display: swap;
+  ascent-override: 87%; descent-override: 36%; line-gap-override: 0%;
+  src: url(/fonts/commissioner-cyrillic.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Commissioner"; font-style: normal; font-weight: 300 700; font-display: swap;
+  ascent-override: 87%; descent-override: 36%; line-gap-override: 0%;
+  src: url(/fonts/commissioner-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/jetbrains-mono-cyrillic.woff2) format("woff2");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 400 700; font-display: swap;
+  src: url(/fonts/jetbrains-mono-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
 :root {
   color-scheme: dark;
-  --bg: #09090b;
-  --panel: #101013;
-  --panel-2: #18181b;
-  --border: #27272a;
-  --border-strong: #3f3f46;
-  --fg: #e4e4e7;
-  --fg-strong: #fafafa;
-  --muted: #a1a1aa;
-  --faint: #71717a;
-  --dim: #52525b;
-  --accent: #38bdf8;
-  --accent-strong: #0ea5e9;
-  --amber: #f59e0b;
-  --red: #f87171;
-  --emerald: #34d399;
-  --violet: #a78bfa;
-  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
-  --page: 990px;
+  --bg: #1f1c24;
+  --panel: #27232d;
+  --panel-2: #302b37;
+  --border: #3a3542;
+  --border-strong: #514a5c;
+  --fg: #dbd4ca;
+  --fg-strong: #f4eee5;
+  --muted: #afa89e;
+  --faint: #8d867d;
+  --dim: #645e6b;
+  --accent: #e8aa5e;
+  --accent-strong: #f5c68a;
+  --amber: #e8aa5e;
+  --red: #eb8f86;
+  --emerald: #a3cc9f;
+  --violet: #bca6e6;
+  --rail: #1a1720;
+  --sans: "Commissioner", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  --page: 860px;
+  --rail-w: 264px;
 }
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg: #fafafa;
-    --panel: #ffffff;
-    --panel-2: #f4f4f5;
-    --border: #e4e4e7;
-    --border-strong: #d4d4d8;
-    --fg: #27272a;
-    --fg-strong: #09090b;
-    --muted: #52525b;
-    --faint: #71717a;
-    --dim: #a1a1aa;
-    --accent: #0284c7;
-    --accent-strong: #0369a1;
-    --amber: #b45309;
-    --red: #dc2626;
-    --emerald: #059669;
-    --violet: #7c3aed;
+    --bg: #efeef2;
+    --panel: #f8f7fa;
+    --panel-2: #e5e3ea;
+    --border: #d6d3dc;
+    --border-strong: #bab5c3;
+    --fg: #2b2731;
+    --fg-strong: #16131b;
+    --muted: #57515f;
+    --faint: #746e7e;
+    --dim: #a7a1b0;
+    --accent: #a05a06;
+    --accent-strong: #7c4502;
+    --amber: #a05a06;
+    --red: #b0392e;
+    --emerald: #3b783a;
+    --violet: #6b4fb0;
+    --rail: #e6e4ea;
   }
 }
 * { box-sizing: border-box; }
@@ -56,38 +86,38 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--fg);
-  font: 15px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font: 380 17px/1.78 var(--sans);
+  -webkit-font-smoothing: antialiased;
 }
 .topbar {
   position: sticky; top: 0; z-index: 10;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter: blur(14px);
 }
 .topbar-inner {
   max-width: var(--page); margin: 0 auto; padding: 10px 24px;
   display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
-.brand { color: var(--faint); font-family: var(--mono); font-size: 12px; text-decoration: none; }
+.brand { color: var(--faint); font-size: 13.5px; text-decoration: none; }
 .brand:hover { color: var(--fg); }
 .topbar .spacer { flex: 1; }
 .chip {
   display: inline-flex; align-items: center; gap: 5px;
-  border: 1px solid var(--border); border-radius: 6px;
-  padding: 2px 8px; font-size: 11px; color: var(--muted);
+  border: 1px solid transparent; border-radius: 999px;
+  padding: 3px 11px; font-size: 12.5px; color: var(--muted);
   text-decoration: none; background: var(--panel);
 }
-a.chip:hover, button.chip:hover { border-color: var(--border-strong); color: var(--fg-strong); }
-button.chip { cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
+a.chip:hover, button.chip:hover { background: var(--panel-2); color: var(--fg-strong); }
+button.chip { cursor: pointer; font: inherit; font-size: 12.5px; line-height: inherit; }
 button.chip:disabled { opacity: 0.5; cursor: default; }
 .chip[aria-expanded="true"] {
-  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel));
 }
-.chip.danger:hover { color: var(--red); border-color: color-mix(in srgb, var(--red) 45%, var(--border)); }
+.chip.danger:hover { color: var(--red); background: color-mix(in srgb, var(--red) 14%, var(--panel)); }
 /* Панель выдачи ссылок раскрывается под шапкой и липнет вместе с ней; фон
    непрозрачный, иначе сквозь неё просвечивает текст статьи. */
-.share-panel { border-top: 1px solid var(--border); background: var(--panel); }
+.share-panel { background: var(--panel); }
 .share-inner {
   max-width: var(--page); margin: 0 auto; padding: 10px 24px;
   display: flex; flex-direction: column; gap: 8px; font-size: 12px;
@@ -97,9 +127,9 @@ button.chip:disabled { opacity: 0.5; cursor: default; }
 .share-status { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .share-status.bad { color: var(--red); }
 .share-url {
-  flex: 1; min-width: 220px; padding: 3px 8px; font: inherit; font-family: var(--mono);
+  flex: 1; min-width: 220px; padding: 4px 10px; font: inherit; font-family: var(--mono);
   font-size: 11.5px; color: var(--fg-strong); background: var(--panel-2);
-  border: 1px solid var(--border); border-radius: 6px; outline: none;
+  border: 1px solid var(--border); border-radius: 8px; outline: none;
 }
 .share-url:focus { border-color: var(--border-strong); }
 .share-exp { font-family: var(--mono); font-size: 11px; color: var(--faint); white-space: nowrap; }
@@ -114,57 +144,57 @@ button.chip:disabled { opacity: 0.5; cursor: default; }
 }
 .share-list a:hover { color: var(--fg-strong); }
 .wrap {
-  max-width: var(--page); margin: 0 auto; padding: 40px 24px 96px;
+  max-width: var(--page); margin: 0 auto; padding: 64px 24px 96px;
   display: grid; grid-template-columns: minmax(0, 1fr); gap: 48px;
 }
-@media (min-width: 1080px) { .wrap { grid-template-columns: minmax(0, 1fr) 200px; } }
-header.doc { margin-bottom: 28px; }
-.warn.stale { margin: 0 0 18px; font-size: 13px; }
+header.doc { margin-bottom: 48px; }
+.warn.stale { --c: var(--amber); margin: 0 0 28px; font-size: 14.5px; color: var(--fg-strong); }
 header.doc h1 {
-  margin: 0 0 10px; font-size: 27px; line-height: 1.25;
-  letter-spacing: -0.02em; color: var(--fg-strong); font-weight: 600;
+  margin: 0 0 16px; font-size: clamp(30px, 6vw, 40px); line-height: 1.15; text-wrap: balance;
+  letter-spacing: -0.025em; color: var(--fg-strong); font-weight: 500;
 }
 .meta {
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
-  font-size: 11px; color: var(--faint); font-family: var(--mono);
+  font-size: 13.5px; color: var(--faint);
 }
 .meta .dot { color: var(--dim); }
+.meta .ident { font-family: var(--mono); font-size: 11.5px; color: var(--dim); }
 .tag {
-  border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
-  color: var(--muted); background: var(--panel-2); font-size: 10.5px;
+  border-radius: 999px; padding: 2px 10px;
+  color: var(--muted); background: var(--panel-2); font-size: 12.5px;
 }
-article { min-width: 0; }
+article { min-width: 0; max-width: 700px; }
 article > *:first-child { margin-top: 0; }
 article h2 {
-  margin: 42px 0 14px; padding-bottom: 8px; font-size: 20px; font-weight: 600;
-  letter-spacing: -0.01em; color: var(--fg-strong); border-bottom: 1px solid var(--border);
+  margin: 64px 0 14px; font-size: 25px; font-weight: 600; line-height: 1.3;
+  letter-spacing: -0.015em; color: var(--fg-strong);
   scroll-margin-top: 64px;
 }
 article h3 {
-  margin: 28px 0 10px; font-size: 15.5px; font-weight: 600; color: var(--fg-strong);
+  margin: 36px 0 8px; font-size: 18.5px; font-weight: 600; color: var(--accent);
   scroll-margin-top: 64px;
 }
-article h4 { margin: 22px 0 8px; font-size: 13.5px; font-weight: 600; color: var(--muted); }
-article p { margin: 14px 0; }
-article ul, article ol { margin: 14px 0; padding-left: 22px; }
-article li { margin: 6px 0; }
-article li::marker { color: var(--dim); }
-article a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); }
-article a:hover { color: var(--accent-strong); border-bottom-color: var(--accent-strong); }
-article strong { color: var(--fg-strong); font-weight: 600; }
-article hr { border: none; border-top: 1px solid var(--border); margin: 32px 0; }
-article img { max-width: 100%; border: 1px solid var(--border); border-radius: 8px; }
+article h4 { margin: 22px 0 8px; font-size: 15.5px; font-weight: 600; color: var(--fg-strong); }
+article p { margin: 16px 0; }
+article ul, article ol { margin: 16px 0; padding-left: 22px; }
+article li { margin: 8px 0; }
+article li::marker { color: var(--accent); }
+article a { color: var(--accent); text-decoration: none; border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+article a:hover { color: var(--accent-strong); border-bottom-color: currentColor; }
+article strong { color: var(--fg-strong); font-weight: 620; }
+article hr { border: none; border-top: 1px solid var(--border); margin: 40px 0; }
+article img { max-width: 100%; border-radius: 14px; }
 code, kbd, pre { font-family: var(--mono); }
 code {
-  font-size: 12.5px; background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 5px; padding: 0.08em 0.34em; color: var(--fg-strong);
+  font-size: 0.8em; background: var(--panel-2);
+  border-radius: 6px; padding: 0.08em 0.34em; color: var(--fg-strong);
 }
 pre {
-  position: relative; margin: 16px 0; padding: 14px 16px; overflow-x: auto;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
-  font-size: 12.5px; line-height: 1.6;
+  position: relative; margin: 20px 0; padding: 18px 22px; overflow-x: auto;
+  background: var(--panel); border-radius: 14px;
+  font-size: 13px; line-height: 1.75;
 }
-pre code { background: none; border: none; padding: 0; font-size: inherit; color: var(--fg); }
+pre code { background: none; padding: 0; font-size: inherit; color: var(--fg); }
 /* До отрисовки виден исходник: страница остаётся осмысленной, если бандл mermaid
    не загрузился. После — превью 16:10 со схемой, вписанной целиком. */
 pre.mermaid {
@@ -173,10 +203,8 @@ pre.mermaid {
 }
 pre.mermaid[data-processed] {
   color: inherit; padding: 0; position: relative; overflow: hidden;
-  aspect-ratio: 16 / 10; background: var(--panel);
-  border: 1px solid var(--border); border-radius: 8px;
+  aspect-ratio: 16 / 10; background: var(--panel); border-radius: 14px;
 }
-pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
 
 /* Общая площадка pan/zoom: и во врезке, и в просмотрщике. Схему двигают мышью,
    поэтому выделение текста тут только мешает. */
@@ -192,11 +220,11 @@ pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
 /* Врезка открывается вписанной, но её можно двигать и приближать на месте. */
 .mermaid-wrap { position: relative; }
 .pz-btn {
-  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
-  border-radius: 6px; padding: 3px 9px; font: inherit; font-size: 12px;
-  line-height: 1.3; cursor: pointer;
+  border: none; background: var(--panel-2); color: var(--muted);
+  border-radius: 999px; padding: 3px 10px; font: inherit; font-size: 12px;
+  line-height: 1.4; cursor: pointer;
 }
-.pz-btn:hover { color: var(--fg-strong); border-color: var(--border-strong); }
+.pz-btn:hover { color: var(--fg-strong); background: var(--border); }
 .mermaid-bar {
   position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;
   opacity: 0.35; transition: opacity 0.12s;
@@ -215,8 +243,8 @@ pre.mermaid[data-processed]:hover { border-color: var(--border-strong); }
 .mermaid-modal .bar .hint { font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .mermaid-modal .pz { position: relative; flex: 1; inset: auto; }
 pre[data-lang]::before {
-  content: attr(data-lang); position: absolute; top: 6px; right: 10px;
-  font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--dim);
+  content: attr(data-lang); position: absolute; top: 10px; right: 16px;
+  font-family: var(--sans); font-size: 12px; color: var(--dim);
 }
 /* Длинные строки переносятся: горизонтальный скролл в тексте читать неудобно.
    Правило не завязано на скрипт — без JS блок всё равно переносится. */
@@ -229,89 +257,105 @@ article pre.nowrap { white-space: pre; overflow-wrap: normal; }
 .code-bar {
   position: absolute; top: 1px; right: 1px; z-index: 1;
   display: flex; align-items: center; gap: 4px;
-  padding: 5px 6px 5px 10px; border-radius: 0 7px 0 8px; background: var(--panel);
+  padding: 6px 8px 6px 12px; border-radius: 0 14px 0 10px; background: var(--panel);
   opacity: 0; pointer-events: none; transition: opacity 0.12s;
 }
 .code-wrap:hover .code-bar, .code-bar:focus-within { opacity: 1; pointer-events: auto; }
 @media (hover: none) { .code-bar { opacity: 1; pointer-events: auto; } }
 .code-btn {
-  border: 1px solid var(--border); background: var(--panel-2); color: var(--muted);
-  border-radius: 6px; padding: 2px 7px; font-family: var(--mono); font-size: 10.5px;
+  border: none; background: var(--panel-2); color: var(--muted);
+  border-radius: 999px; padding: 2px 10px; font-family: var(--sans); font-size: 12px;
   line-height: 1.5; cursor: pointer;
 }
-.code-btn:hover { color: var(--fg-strong); border-color: var(--border-strong); }
-.code-btn.copy { min-width: 84px; text-align: center; }
+.code-btn:hover { color: var(--fg-strong); background: var(--border); }
+.code-btn.copy { min-width: 96px; text-align: center; }
 .code-btn[aria-pressed="true"] {
-  color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
 }
 blockquote {
-  margin: 16px 0; padding: 2px 0 2px 16px; color: var(--muted);
-  border-left: 2px solid var(--border-strong);
+  margin: 28px 0; padding: 0 0 0 20px; color: var(--muted);
+  font-size: 19px; line-height: 1.6; border-left: 2px solid var(--accent);
 }
-.tablewrap { margin: 18px 0; max-width: 100%; overflow-x: auto; }
+.tablewrap {
+  margin: 24px 0; max-width: 100%; overflow-x: auto;
+  background: var(--panel); border-radius: 14px; padding: 6px 4px;
+}
 .tablewrap table { margin: 0; }
 /* Заметки, отрендеренные до появления .tablewrap: таблица скроллится сама. */
 article > table { display: block; max-width: 100%; overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; margin: 18px 0; font-size: 13.5px; }
-th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
-th {
-  background: var(--panel-2); color: var(--faint); font-weight: 600;
-  font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase;
-  border-bottom: 1px solid var(--border);
+table { width: 100%; border-collapse: collapse; margin: 24px 0; font-size: 14.5px; }
+th, td {
+  text-align: left; padding: 10px 14px; vertical-align: top;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
 }
-tbody tr:hover td { background: color-mix(in srgb, var(--panel) 60%, transparent); }
+th { color: var(--faint); font-weight: 500; font-size: 13px; border-bottom-color: var(--border); }
+tbody tr:last-child td { border-bottom: none; }
 /* Длинные пути в ячейках рвутся по месту: иначе одна строка кода распирает
    таблицу шире колонки и включает горизонтальный скролл на ровном месте. */
 td code { overflow-wrap: anywhere; }
 .note, .warn, .ok {
-  margin: 18px 0; padding: 12px 16px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--panel); font-size: 14px;
+  position: relative; margin: 20px 0; padding: 16px 20px 16px 42px; border-radius: 14px;
+  background: color-mix(in srgb, var(--c) 11%, var(--bg)); font-size: 15.5px;
 }
-.note { border-left: 2px solid var(--accent); }
-.warn { border-left: 2px solid var(--amber); }
-.ok { border-left: 2px solid var(--emerald); }
+.note { --c: var(--violet); }
+.warn { --c: var(--red); }
+.ok { --c: var(--emerald); }
+.note::before, .warn::before, .ok::before {
+  content: ""; position: absolute; left: 19px; top: 1.45em; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent);
+}
 .note > *:first-child, .warn > *:first-child, .ok > *:first-child { margin-top: 0; }
 .note > *:last-child, .warn > *:last-child, .ok > *:last-child { margin-bottom: 0; }
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin: 18px 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin: 20px 0; }
 .card {
-  border: 1px solid var(--border); border-radius: 8px; background: var(--panel);
-  padding: 12px 14px; font-size: 13px;
+  border-radius: 14px; background: var(--panel);
+  padding: 16px 18px; font-size: 14.5px; line-height: 1.6; color: var(--muted);
 }
-.card:hover { border-color: var(--border-strong); }
-.card h4 { margin: 0 0 6px; }
+.card:hover { background: var(--panel-2); }
+.card h4 { margin: 0 0 4px; }
 kbd {
-  border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px;
-  padding: 1px 5px; font-size: 11px; background: var(--panel-2); color: var(--muted);
+  border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 6px;
+  padding: 1px 6px; font-family: var(--sans); font-size: 12px; background: var(--panel-2); color: var(--muted);
 }
+/* Оглавление — постоянная панель слева, по её правому краю растёт полоса
+   прочитанного. Панель fixed, но остаётся элементом grid: без align-self: stretch
+   унаследованный от grid start ужимает её до высоты пунктов. */
 nav.toc { display: none; }
 @media (min-width: 1080px) {
+  body:has(nav.toc) { padding-left: var(--rail-w); }
   nav.toc {
-    display: block; position: sticky; top: 88px; align-self: start;
-    font-size: 12px; line-height: 1.55; max-height: calc(100vh - 120px); overflow-y: auto;
+    display: block; position: fixed; z-index: 20; left: 0; top: 0; bottom: 0;
+    align-self: stretch; width: var(--rail-w); overflow-y: auto;
+    padding: 28px 22px 40px 26px; background: var(--rail); border-right: 1px solid var(--border);
+    font-size: 14px; line-height: 1.4;
   }
   nav.toc .toc-title {
-    font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
-    color: var(--dim); margin-bottom: 10px; font-weight: 600;
+    font-size: 15px; font-weight: 600; color: var(--fg-strong);
+    margin: 0 0 22px; padding-bottom: 20px; border-bottom: 1px solid var(--border);
   }
   nav.toc a {
-    display: block; padding: 3px 0 3px 10px; color: var(--faint);
-    text-decoration: none; border-left: 1px solid var(--border);
+    display: block; padding: 7px 10px; margin: 1px 0; border-radius: 8px;
+    color: var(--faint); text-decoration: none;
   }
-  nav.toc a:hover { color: var(--fg-strong); border-left-color: var(--border-strong); }
-  nav.toc a.d3 { padding-left: 22px; font-size: 11.5px; }
-  nav.toc a.active {
-    color: var(--fg-strong);
-    border-left-color: var(--accent);
-    background: linear-gradient(to right, color-mix(in srgb, var(--accent) 10%, transparent), transparent 70%);
+  nav.toc a:hover { color: var(--fg-strong); background: var(--panel); }
+  nav.toc a.d3 { padding-left: 24px; font-size: 13px; }
+  nav.toc a.active { color: var(--fg-strong); background: var(--panel-2); box-shadow: inset 2px 0 0 var(--accent); }
+  /* Без поддержки scroll-timeline полоса просто не видна: scaleY(0) в базовом стиле. */
+  body:has(nav.toc)::before {
+    content: ""; position: fixed; z-index: 21; top: 0; left: calc(var(--rail-w) - 1px);
+    width: 2px; height: 100vh; background: var(--accent);
+    transform-origin: top; transform: scaleY(0);
+    animation: read-progress linear both; animation-timeline: scroll(root);
   }
 }
+@keyframes read-progress { from { transform: scaleY(0); } to { transform: scaleY(1); } }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
 }
 footer.doc {
   max-width: var(--page); margin: 0 auto; padding: 20px 24px 48px;
-  border-top: 1px solid var(--border); color: var(--dim);
-  font-size: 11px; font-family: var(--mono);
+  color: var(--dim); font-size: 13px;
   display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
 }
 footer.doc a { color: var(--faint); text-decoration: none; }
@@ -319,16 +363,16 @@ footer.doc a:hover { color: var(--fg); }
 .empty {
   max-width: 560px; margin: 18vh auto; padding: 0 24px; text-align: center;
 }
-.empty h1 { font-size: 20px; color: var(--fg-strong); margin: 0 0 8px; font-weight: 600; }
-.empty p { color: var(--faint); font-size: 13px; margin: 0; }
-.gate { display: flex; gap: 8px; justify-content: center; margin-top: 18px; }
+.empty h1 { font-size: 28px; color: var(--fg-strong); margin: 0 0 10px; font-weight: 500; letter-spacing: -0.02em; }
+.empty p { color: var(--faint); font-size: 15px; margin: 0; }
+.gate { display: flex; gap: 8px; justify-content: center; margin-top: 20px; }
 .gate input {
-  flex: 1; max-width: 320px; padding: 7px 10px; font: inherit; font-size: 13px;
+  flex: 1; max-width: 320px; padding: 8px 14px; font: inherit; font-size: 14px;
   color: var(--fg-strong); background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 7px; outline: none;
+  border-radius: 999px; outline: none;
 }
 .gate input:focus { border-color: var(--border-strong); }
-.gate button { cursor: pointer; background: var(--panel-2); font: inherit; font-size: 13px; }
+.gate button { cursor: pointer; font: inherit; font-size: 14px; padding: 6px 16px; }
 `;
 
 /** Подсветка активного пункта оглавления по мере прокрутки. */
@@ -628,16 +672,16 @@ const MERMAID = `
   const WHEEL_STEP = 0.0048;
 
   const palette = (dark) => dark
-    ? { background: '#09090b', mainBkg: '#18181b', nodeBorder: '#3f3f46', primaryColor: '#18181b',
-        primaryTextColor: '#e4e4e7', primaryBorderColor: '#3f3f46', secondaryColor: '#101013',
-        tertiaryColor: '#101013', lineColor: '#52525b', textColor: '#e4e4e7',
-        edgeLabelBackground: '#09090b', clusterBkg: '#101013', clusterBorder: '#27272a',
-        titleColor: '#fafafa' }
-    : { background: '#fafafa', mainBkg: '#f4f4f5', nodeBorder: '#d4d4d8', primaryColor: '#f4f4f5',
-        primaryTextColor: '#27272a', primaryBorderColor: '#d4d4d8', secondaryColor: '#ffffff',
-        tertiaryColor: '#ffffff', lineColor: '#a1a1aa', textColor: '#27272a',
-        edgeLabelBackground: '#fafafa', clusterBkg: '#ffffff', clusterBorder: '#e4e4e7',
-        titleColor: '#09090b' };
+    ? { background: '#27232d', mainBkg: '#302b37', nodeBorder: '#645e6b', primaryColor: '#302b37',
+        primaryTextColor: '#dbd4ca', primaryBorderColor: '#645e6b', secondaryColor: '#27232d',
+        tertiaryColor: '#27232d', lineColor: '#8d867d', textColor: '#dbd4ca',
+        edgeLabelBackground: '#27232d', clusterBkg: '#27232d', clusterBorder: '#3a3542',
+        titleColor: '#f4eee5' }
+    : { background: '#f8f7fa', mainBkg: '#efeef2', nodeBorder: '#a7a1b0', primaryColor: '#efeef2',
+        primaryTextColor: '#2b2731', primaryBorderColor: '#a7a1b0', secondaryColor: '#f8f7fa',
+        tertiaryColor: '#f8f7fa', lineColor: '#746e7e', textColor: '#2b2731',
+        edgeLabelBackground: '#f8f7fa', clusterBkg: '#f8f7fa', clusterBorder: '#d6d3dc',
+        titleColor: '#16131b' };
 
   let mermaid;
   try {
@@ -663,7 +707,7 @@ const MERMAID = `
       securityLevel: 'antiscript',
       themeVariables: {
         ...palette(dark.matches),
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        fontFamily: '"Commissioner", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         fontSize: '13px',
       },
       flowchart: { htmlLabels: true, useMaxWidth: true },
@@ -677,6 +721,9 @@ const MERMAID = `
     nodes.forEach(decorate);
   };
 
+  // mermaid меряет подписи при отрисовке: до загрузки шрифта размеры считаются
+  // по запасному, и текст потом вылезает из узлов.
+  await document.fonts.ready;
   await draw();
   dark.addEventListener('change', draw);
 
@@ -932,6 +979,7 @@ function shell(title: string, body: string, scripts: string[] = []): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="preload" href="/fonts/commissioner-cyrillic.woff2" as="font" type="font/woff2" crossorigin>
 <style>${CSS}</style>
 </head>
 <body>
@@ -1007,7 +1055,7 @@ export function renderNotePage(note: NoteRow, siteName: string, options: NotePag
 
   const ident = share
     ? `<span>по ссылке до <time datetime="${share.expiresAt}">${dateTimeFmt.format(new Date(share.expiresAt))}</time></span>`
-    : `<span>${note.uuid}</span>`;
+    : `<span class="ident">${note.uuid}</span>`;
 
   const footer = share
     ? `<span>${escapeHtml(siteName)}</span>`

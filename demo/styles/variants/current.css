@@ -1,0 +1,17 @@
+
+/* ---------- 0. Сейчас: CSS прода, тема форсируется переключателем ---------- */
+html[data-v="current"] {
+  color-scheme: dark;
+  --bg: #09090b; --panel: #101013; --panel-2: #18181b; --border: #27272a; --border-strong: #3f3f46;
+  --fg: #e4e4e7; --fg-strong: #fafafa; --muted: #a1a1aa; --faint: #71717a; --dim: #52525b;
+  --accent: #38bdf8; --accent-strong: #0ea5e9; --amber: #f59e0b; --red: #f87171; --emerald: #34d399; --violet: #a78bfa;
+  --mm-bg: #09090b; --mm-node: #18181b; --mm-line: #52525b;
+
+  &[data-theme="light"] {
+    color-scheme: light;
+    --bg: #fafafa; --panel: #ffffff; --panel-2: #f4f4f5; --border: #e4e4e7; --border-strong: #d4d4d8;
+    --fg: #27272a; --fg-strong: #09090b; --muted: #52525b; --faint: #71717a; --dim: #a1a1aa;
+    --accent: #0284c7; --accent-strong: #0369a1; --amber: #b45309; --red: #dc2626; --emerald: #059669; --violet: #7c3aed;
+    --mm-bg: #fafafa; --mm-node: #f4f4f5; --mm-line: #a1a1aa;
+  }
+}

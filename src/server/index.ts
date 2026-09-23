@@ -376,6 +376,7 @@ app.get('/:uuid{[0-9a-fA-F-]{36}}/raw', guardToken, (c) => {
 // Бандл mermaid: страница заметки импортирует его динамически, только если в ней есть схема.
 app.use('/vendor/*', serveStatic({ root: './dist/web' }));
 app.use('/assets/*', serveStatic({ root: './dist/web' }));
+app.use('/fonts/*', serveStatic({ root: './dist/web' }));
 app.use('/favicon.svg', serveStatic({ root: './dist/web' }));
 app.get('/', guardToken, serveStatic({ path: './dist/web/index.html' }));
 // Редактор — та же SPA, маршрут разбирает фронт по pathname. Гейт здесь только

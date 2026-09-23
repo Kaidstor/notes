@@ -53,7 +53,7 @@ export function WhatsNew({ fresh, onClose }: { fresh: string[]; onClose: () => v
 
         <div className="flex flex-col gap-5 overflow-y-auto px-4 py-4">
           {CHANGELOG.map((entry) => (
-            <div key={entry.date}>
+            <div key={`${entry.date} ${entry.title}`}>
               <div className="flex items-center gap-2">
                 <span className="text-[12px] font-semibold text-zinc-100">{entry.title}</span>
                 {fresh.includes(entry.date) && (

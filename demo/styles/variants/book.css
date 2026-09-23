@@ -1,0 +1,148 @@
+
+/* ---------- 1. Книга ---------- */
+html[data-v="book"] {
+  color-scheme: light;
+  --bg: #f7f8f6; --panel: #ffffff; --panel-2: #eceee9; --border: #d9dcd5; --border-strong: #b9bdb4;
+  --fg: #23262c; --fg-strong: #101318; --muted: #4a4f57; --faint: #6d727a; --dim: #a2a7ad;
+  --accent: #2f3f9e; --accent-strong: #1d2a7a; --amber: #8f5300; --red: #a8261d; --emerald: #2b6541; --violet: #5b3fa0;
+  --serif: "Literata", Georgia, serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --page: 1000px;
+  --mm-bg: #ffffff; --mm-node: #f7f8f6; --mm-border: #9aa0a8; --mm-line: #6d727a;
+
+  &[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #1c1e22; --panel: #22252a; --panel-2: #2a2d33; --border: #353940; --border-strong: #4a4f57;
+    --fg: #d9d6cf; --fg-strong: #f2efe9; --muted: #aba79f; --faint: #8b877f; --dim: #62646b;
+    --accent: #a4b1f5; --accent-strong: #c8d0fb; --amber: #e2b261; --red: #f0998f; --emerald: #92c9a3; --violet: #c2adf2;
+    --mm-bg: #22252a; --mm-node: #2a2d33; --mm-border: #62646b; --mm-line: #8b877f;
+  }
+
+  & body {
+    font-family: var(--serif); font-size: 18px; line-height: 1.68;
+    font-optical-sizing: auto; font-variant-numeric: oldstyle-nums proportional-nums;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  & .topbar { background: color-mix(in srgb, var(--bg) 92%, transparent); border-bottom-color: transparent; }
+  & .topbar-inner { font-size: 14px; gap: 18px; padding-top: 14px; padding-bottom: 14px; }
+  & .brand { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--muted); }
+  & .chip, & button.chip {
+    border: none; background: none; padding: 0; border-radius: 0; font-family: var(--serif);
+    font-size: 14.5px; color: var(--faint); text-decoration: underline; text-decoration-color: transparent;
+    text-underline-offset: 4px;
+  }
+  & a.chip:hover, & button.chip:hover { color: var(--fg-strong); text-decoration-color: currentColor; border: none; }
+  & .chip[aria-expanded="true"] { color: var(--accent); text-decoration-color: currentColor; }
+  & .share-panel { background: var(--panel); }
+  & .share-url { font-size: 12.5px; border-radius: 3px; }
+
+  & .wrap { padding-top: 72px; gap: 56px; }
+  @media (min-width: 1080px) {
+    & .wrap { grid-template-columns: 180px minmax(0, 680px); justify-content: center; }
+    & .wrap > nav.toc { grid-column: 1; grid-row: 1; top: 96px; }
+    & .wrap > div:first-child { grid-column: 2; }
+  }
+
+  & header.doc { margin-bottom: 56px; }
+  & header.doc h1 {
+    font-family: var(--serif); font-weight: 350; font-size: 46px; line-height: 1.08;
+    letter-spacing: -0.02em; margin-bottom: 20px; text-wrap: balance;
+  }
+  & .meta { font-family: var(--serif); font-style: italic; font-size: 15px; gap: 6px; color: var(--faint); }
+  & .meta .dot { color: var(--dim); }
+  & .meta > span:not(.tag):has(+ .tag), & .meta > span:not(.tag):last-child {
+    font-style: normal; font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+  }
+  & .tag { border: none; background: none; padding: 0; font-size: 15px; color: var(--faint); }
+  & .meta > span:not(.tag) + .tag::before { content: "— "; color: var(--dim); }
+  & .tag:not(:last-child)::after { content: ","; }
+
+  & article h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 25px; line-height: 1.25;
+    letter-spacing: -0.01em; border-bottom: none; padding-bottom: 0; margin: 2.4em 0 0.6em;
+  }
+  & article h3 { font-family: var(--serif); font-style: italic; font-weight: 500; font-size: 20px; margin: 1.8em 0 0.4em; }
+  & article h4 { font-family: var(--serif); font-size: 17px; color: var(--fg-strong); }
+  & article p { margin: 0.9em 0; hyphens: auto; }
+  & article ul, & article ol { padding-left: 1.3em; }
+  & article li { margin: 0.35em 0; }
+  & article li::marker { color: var(--faint); }
+  & article a {
+    color: var(--accent); border-bottom: none; text-decoration: underline;
+    text-decoration-thickness: 1px; text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  }
+  & article a:hover { text-decoration-color: currentColor; }
+  & article strong { font-weight: 650; }
+
+  & code { font-size: 0.8em; border: none; background: var(--panel-2); border-radius: 3px; padding: 0.1em 0.3em; }
+  & pre code { font-size: inherit; padding: 0; background: none; }
+  & pre {
+    background: var(--panel-2); border: none; border-radius: 3px;
+    font-size: 13.5px; line-height: 1.65; padding: 16px 20px;
+  }
+  & pre[data-lang]::before { text-transform: none; letter-spacing: 0; font-family: var(--serif); font-style: italic; font-size: 12.5px; }
+  & .code-bar { background: var(--panel-2); }
+  & .code-btn, & .pz-btn { font-family: var(--serif); font-size: 13px; border-radius: 3px; background: var(--panel); }
+
+  /* Таблицы по-книжному: три линейки, без вертикальных и без заливки. */
+  & table { font-size: 15.5px; font-variant-numeric: lining-nums tabular-nums; }
+  & .tablewrap { margin: 1.8em 0; }
+  & table { border-top: 1.5px solid var(--fg-strong); border-bottom: 1.5px solid var(--fg-strong); }
+  & th {
+    background: none; text-transform: none; letter-spacing: 0; font-size: 14.5px;
+    font-weight: 600; color: var(--fg-strong); border-bottom: 1px solid var(--fg-strong); padding: 10px 14px 8px 0;
+  }
+  & td { border-bottom: none; padding: 7px 14px 7px 0; }
+  & tbody tr:first-child td { padding-top: 10px; }
+  & tbody tr:last-child td { padding-bottom: 10px; }
+  & tbody tr:hover td { background: none; }
+
+  /* Врезки — абзац с заголовком в начале строки, цвет только у заголовка. */
+  & .note, & .warn, & .ok {
+    border: none; background: none; border-radius: 0; font-size: 16.5px;
+    padding: 0 0 0 1.4em; margin: 1.6em 0; border-left: 1px solid var(--border-strong);
+  }
+  & .note::before, & .warn::before, & .ok::before {
+    font-weight: 650; font-variant: small-caps; letter-spacing: 0.03em; margin-right: 0.35em;
+  }
+  & .note::before { content: "примечание."; color: var(--accent); }
+  & .warn::before { content: "осторожно."; color: var(--red); }
+  & .ok::before { content: "готово."; color: var(--emerald); }
+  & .warn { border-left-color: var(--red); }
+
+  & blockquote {
+    border-left: none; padding: 0 2.2em; margin: 1.8em 0; font-style: italic;
+    font-size: 19px; color: var(--muted);
+  }
+  & .cards { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 36px; margin: 1.6em 0; }
+  & .card {
+    border: none; border-top: 1px solid var(--border-strong); border-radius: 0; background: none;
+    padding: 12px 0 8px; font-size: 16px; line-height: 1.55; color: var(--muted);
+  }
+  & .card:hover { border-color: var(--border-strong); }
+  & .card h4 { font-style: italic; font-weight: 600; font-size: 17px; color: var(--fg-strong); margin: 0 0 4px; }
+  & kbd { font-family: var(--mono); border-radius: 3px; }
+
+  & pre.mermaid[data-processed] { border-radius: 3px; border-color: var(--border); }
+
+  @media (min-width: 1080px) {
+    & nav.toc { font-size: 14px; line-height: 1.4; }
+    & nav.toc .toc-title {
+      text-transform: none; letter-spacing: 0; font-size: 14px; font-style: italic;
+      font-weight: 400; color: var(--faint); margin-bottom: 14px;
+    }
+    & nav.toc a { border-left: none; padding: 5px 0 5px 16px; color: var(--faint); position: relative; }
+    & nav.toc a.d3 { padding-left: 28px; font-size: 13px; font-style: italic; }
+    & nav.toc a:hover { color: var(--fg-strong); }
+    & nav.toc a.active { background: none; color: var(--fg-strong); }
+    & nav.toc a.active::before { content: "—"; position: absolute; left: 0; color: var(--accent); }
+    & nav.toc a.d3.active::before { left: 12px; }
+  }
+
+  & footer.doc {
+    font-family: var(--serif); font-style: italic; font-size: 14px; justify-content: center;
+    border-top: none; color: var(--faint);
+  }
+}
