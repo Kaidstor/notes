@@ -1,4 +1,4 @@
-import type { NoteRow } from './db.ts';
+import { isStale, type NoteRow } from './db.ts';
 import { escapeHtml, type TocItem } from './render.ts';
 
 /** Визуальный язык приложения sql-kai: zinc-шкала, sky-акцент, мелкий шрифт,
@@ -119,6 +119,7 @@ button.chip:disabled { opacity: 0.5; cursor: default; }
 }
 @media (min-width: 1080px) { .wrap { grid-template-columns: minmax(0, 1fr) 200px; } }
 header.doc { margin-bottom: 28px; }
+.warn.stale { margin: 0 0 18px; font-size: 13px; }
 header.doc h1 {
   margin: 0 0 10px; font-size: 27px; line-height: 1.25;
   letter-spacing: -0.02em; color: var(--fg-strong); font-weight: 600;
@@ -1014,6 +1015,11 @@ export function renderNotePage(note: NoteRow, siteName: string, options: NotePag
   <span>·</span>
   <a href="/${note.uuid}/raw">исходник</a>`;
 
+  const staleBanner =
+    note.stale_after && isStale(note.stale_after)
+      ? `<div class="warn stale" role="note">Устарела с ${note.stale_after.split('-').reverse().join('.')}</div>`
+      : '';
+
   const scripts = share ? [LOCALTIME] : [DELETE_CHIP, SHARE_PANEL];
   if (note.html.includes('class="mermaid"')) scripts.push(MERMAID);
 
@@ -1027,6 +1033,7 @@ export function renderNotePage(note: NoteRow, siteName: string, options: NotePag
 </div>
 <div class="wrap">
   <div>
+    ${staleBanner}
     <header class="doc">
       <h1>${escapeHtml(note.title)}</h1>
       <div class="meta">

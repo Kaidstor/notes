@@ -98,6 +98,23 @@ console.log(note.url);
 - И третий
 `,
   },
+  {
+    uuid: 'e5a7c1d2-4b8f-4e36-9a0d-2c6f8b1e7d49',
+    tags: ['vault', 'vault-jwks-broker'],
+    markdown: `---
+title: План на 1 января
+tags: [vault, vault-jwks-broker]
+stale_after: 2026-01-02
+---
+
+## Сделать
+
+- Перевыпустить ключи брокера.
+
+Заметка «на день»: \`stale_after\` в прошлом, поэтому в списке её нет, пока не включён
+переключатель «устаревшие», а страница открывается с плашкой.
+`,
+  },
 ];
 
 for (const sample of SAMPLES) {
@@ -114,6 +131,7 @@ for (const sample of SAMPLES) {
     plain: rendered.plain,
     tags: data.tags ?? sample.tags,
     owner: 'admin',
+    stale_after: data.stale_after ?? null,
   });
 
   console.log(`+ ${sample.uuid}  ${rendered.title}`);

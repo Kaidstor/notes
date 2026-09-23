@@ -160,13 +160,19 @@ if (options.remove) {
 }
 
 if (options.list !== undefined) {
-  const url = `${options.host}/api/notes?q=${encodeURIComponent(options.list)}`;
+  const url = `${options.host}/api/notes?stale=1&q=${encodeURIComponent(options.list)}`;
   const res = await fetch(url, { headers: { authorization: `Bearer ${requireToken()}` } });
   if (!res.ok) fail(`список не получен: HTTP ${res.status}`);
 
   const data = (await res.json()) as {
     role: 'admin' | 'read';
-    notes: { uuid: string; title: string; updated_at: string }[];
+    notes: {
+      uuid: string;
+      title: string;
+      updated_at: string;
+      stale_after?: string | null;
+      stale?: boolean;
+    }[];
   };
   // Под read-токеном пусто ≠ «на сервере ничего нет»: он видит только свои
   // публикации, и молчаливый пустой вывод читался бы как отсутствие заметки
@@ -174,7 +180,8 @@ if (options.list !== undefined) {
     console.log('# read-токен: только заметки, опубликованные им');
   }
   for (const note of data.notes) {
-    console.log(`${note.uuid}  ${note.updated_at.slice(0, 10)}  ${note.title}`);
+    const stale = note.stale ? `  [устарела ${note.stale_after}]` : '';
+    console.log(`${note.uuid}  ${note.updated_at.slice(0, 10)}  ${note.title}${stale}`);
   }
   process.exit(0);
 }

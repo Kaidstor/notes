@@ -9,6 +9,7 @@ import { logger } from 'hono/logger';
 import type { NoteOwner, ShareRow } from './db.ts';
 import {
   countNotes,
+  countStale,
   createShare,
   deleteNote,
   getNote,
@@ -178,6 +179,7 @@ app.post('/api/notes', guardToken, async (c) => {
     plain: rendered.plain,
     tags: payload.tags ?? data.tags ?? [],
     owner,
+    stale_after: data.stale_after ?? null,
   });
 
   return c.json({
@@ -206,13 +208,21 @@ app.delete('/api/notes/:uuid', guardToken, (c) => {
 app.get('/api/notes', guardToken, (c) => {
   const role = c.get('role');
   const scope = role === 'admin' ? undefined : role;
+  const withStale = c.req.query('stale') === '1';
+  const filter = {
+    query: c.req.query('q') ?? '',
+    tags: c.req.queries('tag') ?? [],
+    owner: scope,
+    withStale,
+  };
 
   return c.json({
     site: SITE_NAME,
     role,
-    total: countNotes(scope),
-    tags: listTags(scope),
-    notes: listNotes(c.req.query('q') ?? '', c.req.queries('tag') ?? [], scope),
+    total: countNotes(scope, withStale),
+    staleCount: countStale(filter),
+    tags: listTags(scope, withStale),
+    notes: listNotes(filter),
   });
 });
 
@@ -258,6 +268,7 @@ app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, async (c) => {
     // Теги, заданные при публикации параметром (мимо frontmatter), не теряем.
     tags: data.tags ?? (JSON.parse(existing.tags) as string[]),
     owner,
+    stale_after: data.stale_after ?? null,
   });
 
   return c.json({ uuid: note.uuid, title: note.title, updated_at: note.updated_at });
