@@ -1,5 +1,5 @@
-/** «Что нового»: записи, отсортированные от свежих к старым. Дата — идентификатор
- *  записи, по ней же считается, что пользователь уже видел (localStorage). */
+/** «Что нового»: записи, отсортированные от свежих к старым. Увиденные записи
+ *  хранятся в localStorage ключами `дата|заголовок`: в один день бывает несколько записей. */
 export interface ChangelogEntry {
   date: string;
   title: string;
@@ -78,19 +78,34 @@ export const CHANGELOG: ChangelogEntry[] = [
 
 const SEEN_KEY = 'notes.changelogSeen';
 
-const latest = (): string => CHANGELOG[0]?.date ?? '';
+export const changelogKey = (entry: ChangelogEntry): string => `${entry.date}|${entry.title}`;
 
-function readSeen(): string | null {
+/**
+ * Увиденные ключи; `null` — первый визит. До ключей по записям здесь лежала
+ * голая дата последней увиденной записи: всё строго раньше неё считаем
+ * увиденным, а записи того же дня — нет, их могли добавить после визита.
+ */
+function readSeen(): Set<string> | null {
+  let raw: string | null;
   try {
-    return localStorage.getItem(SEEN_KEY);
+    raw = localStorage.getItem(SEEN_KEY);
   } catch {
     return null;
   }
+  if (raw === null) return null;
+
+  try {
+    const keys: unknown = JSON.parse(raw);
+    if (Array.isArray(keys)) return new Set(keys.filter((k): k is string => typeof k === 'string'));
+  } catch {
+    // не JSON — значит старая отметка-дата
+  }
+  return new Set(CHANGELOG.filter((entry) => entry.date < raw).map(changelogKey));
 }
 
 export function markChangelogSeen(): void {
   try {
-    localStorage.setItem(SEEN_KEY, latest());
+    localStorage.setItem(SEEN_KEY, JSON.stringify(CHANGELOG.map(changelogKey)));
   } catch {
     // приватный режим — покажем историю ещё раз, это не страшно
   }
@@ -106,5 +121,5 @@ export function unseenChangelog(): ChangelogEntry[] {
     markChangelogSeen();
     return [];
   }
-  return CHANGELOG.filter((entry) => entry.date > seen);
+  return CHANGELOG.filter((entry) => !seen.has(changelogKey(entry)));
 }

@@ -3,7 +3,7 @@ import clsx from 'clsx';
 import { Check, Pencil, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { markChangelogSeen, unseenChangelog } from './lib/changelog.ts';
+import { changelogKey, markChangelogSeen, unseenChangelog } from './lib/changelog.ts';
 import { applyTheme, currentTheme, THEMES } from './lib/themes.ts';
 import { WhatsNew } from './WhatsNew.tsx';
 
@@ -132,7 +132,7 @@ export default function App() {
 
   useEffect(() => {
     const unseen = unseenChangelog();
-    if (unseen.length) setFresh(unseen.map((entry) => entry.date));
+    if (unseen.length) setFresh(unseen.map(changelogKey));
   }, []);
 
   const closeWhatsNew = useCallback(() => {
