@@ -1,0 +1,172 @@
+
+/* ---------- 2. Чертёж ---------- */
+html[data-v="draft"] {
+  color-scheme: light;
+  --bg: #eef2f4; --panel: #f7f9fa; --panel-2: #dfe7ec; --border: #aabdca; --border-strong: #6d889c;
+  --fg: #1c3044; --fg-strong: #0b1d2f; --muted: #3d5569; --faint: #5b7285; --dim: #8aa0b1;
+  --accent: #1d5ea8; --accent-strong: #134a88; --amber: #a86400; --red: #c4352b; --emerald: #2b7a4c; --violet: #5a45a8;
+  --desk: #e2e9ee; --grid: rgb(29 94 168 / 0.07); --grid-major: rgb(29 94 168 / 0.14);
+  --cond: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --page: 1080px;
+  --mm-bg: #f7f9fa; --mm-node: #eef2f4; --mm-border: #1c3044; --mm-line: #1c3044; --mm-text: #0b1d2f;
+
+  /* Тёмная — синька: белые линии на синем. */
+  &[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #123458; --panel: #16406a; --panel-2: #1b4a7a; --border: #3d6c98; --border-strong: #7ea4c7;
+    --fg: #d8e6f2; --fg-strong: #ffffff; --muted: #aac4db; --faint: #8baac6; --dim: #5f86aa;
+    --accent: #ffd479; --accent-strong: #ffe3a8; --amber: #ffc861; --red: #ff9384; --emerald: #93e2b4; --violet: #c9b8ff;
+    --desk: #0d2945; --grid: rgb(255 255 255 / 0.05); --grid-major: rgb(255 255 255 / 0.1);
+    --mm-bg: #16406a; --mm-node: #123458; --mm-border: #d8e6f2; --mm-line: #d8e6f2; --mm-text: #ffffff;
+  }
+
+  & body {
+    font-family: var(--sans); font-size: 15.5px; line-height: 1.62;
+    background-color: var(--desk);
+    background-image:
+      linear-gradient(var(--grid-major) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-major) 1px, transparent 1px),
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+    background-attachment: fixed;
+  }
+
+  & .topbar { background: var(--fg-strong); border-bottom: none; backdrop-filter: none; }
+  & .topbar-inner { max-width: var(--page); color: var(--bg); font-family: var(--cond); font-size: 13px; }
+  & .brand { font-family: var(--cond); font-size: 13.5px; font-weight: 600; color: var(--bg); }
+  & .brand:hover { color: var(--bg); text-decoration: underline; }
+  & .chip, & button.chip {
+    font-family: var(--cond); font-size: 12.5px; border-radius: 0; background: transparent;
+    color: var(--bg); border-color: color-mix(in srgb, var(--bg) 40%, transparent);
+  }
+  & a.chip:hover, & button.chip:hover { color: var(--fg-strong); background: var(--bg); border-color: var(--bg); }
+  & .chip[aria-expanded="true"] { color: var(--fg-strong); background: var(--bg); border-color: var(--bg); }
+  & .chip.danger:hover { color: var(--red); background: var(--bg); }
+  & .share-panel { background: var(--panel); border-top: 2px solid var(--fg-strong); border-bottom: 2px solid var(--fg-strong); }
+  & .share-panel .chip { color: var(--fg); border-color: var(--border-strong); }
+  & .share-panel .chip:hover { background: var(--panel-2); color: var(--fg-strong); }
+  & .share-url { border-radius: 0; }
+
+  /* Лист: рамка с полем подшивки слева, вокруг — рабочий стол с сеткой. */
+  & .wrap {
+    margin: 32px auto 0; max-width: calc(var(--page) - 48px); background: var(--bg);
+    border: 2px solid var(--fg-strong); padding: 40px 40px 72px 76px;
+    outline: 1px solid var(--border-strong); outline-offset: 10px;
+  }
+  @media (max-width: 700px) {
+    & .wrap { margin: 16px 12px 0; padding: 24px 18px 48px 22px; outline: none; }
+  }
+  @media (min-width: 1080px) { & .wrap { grid-template-columns: minmax(0, 1fr) 210px; } }
+
+  /* Штамп: заголовок и строка ячеек. */
+  & header.doc { border: 2px solid var(--fg-strong); margin-bottom: 40px; background: var(--panel); }
+  & header.doc h1 {
+    font-family: var(--cond); font-weight: 600; font-size: 34px; line-height: 1.15;
+    letter-spacing: 0; margin: 0; padding: 18px 20px 16px; border-bottom: 1px solid var(--fg-strong);
+  }
+  & .meta { gap: 0; font-family: var(--cond); font-size: 13px; color: var(--fg); align-items: stretch; }
+  & .meta .dot { display: none; }
+  & .meta > span { padding: 6px 14px 7px; border-right: 1px solid var(--fg-strong); line-height: 1.3; }
+  & .meta > span:first-child::before, & .meta > span:not(.tag):has(+ .tag)::before, & .meta > span:not(.tag) + .tag::before {
+    display: block; font-size: 10.5px; color: var(--faint); margin-bottom: 1px;
+  }
+  & .meta > span:first-child::before { content: "Разраб."; }
+  & .meta > span:not(.tag):has(+ .tag)::before { content: "Обозначение"; }
+  & .meta > span:not(.tag):has(+ .tag) { font-family: var(--mono); font-size: 11.5px; }
+  & .tag {
+    border: none; border-radius: 0; background: none; font-size: 13px; color: var(--fg);
+    padding: 6px 12px 7px; border-right: 1px solid var(--fg-strong);
+    display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  & .meta > span:not(.tag) + .tag::before { content: "Теги"; }
+  & .tag:last-child { border-right: none; }
+
+  & article { counter-reset: h2; }
+  & article h2 {
+    counter-increment: h2; counter-reset: h3;
+    display: flex; align-items: baseline; gap: 14px;
+    font-family: var(--cond); font-size: 23px; font-weight: 600; letter-spacing: 0;
+    margin: 48px 0 16px; padding-bottom: 8px; border-bottom: 1.5px solid var(--fg-strong);
+  }
+  & article h2::before {
+    content: counter(h2); flex: none; min-width: 34px; text-align: center;
+    border: 1.5px solid var(--fg-strong); font-size: 17px; line-height: 30px;
+  }
+  & article h3 { counter-increment: h3; font-family: var(--cond); font-size: 18px; font-weight: 600; }
+  & article h3::before { content: counter(h2) "." counter(h3) " "; color: var(--faint); margin-right: 4px; }
+  & article h4 { font-family: var(--cond); font-size: 15px; color: var(--fg-strong); }
+  & article a { color: var(--accent); border-bottom: 1px dashed currentColor; }
+  & article a:hover { border-bottom-style: solid; }
+  & article li::marker { color: var(--fg); }
+
+  & code { border-radius: 0; background: var(--panel-2); border-color: transparent; font-size: 12.5px; }
+  & pre { border-radius: 0; border: 1px solid var(--fg-strong); background: var(--panel); font-size: 13px; }
+  & pre[data-lang]::before { text-transform: none; letter-spacing: 0; font-family: var(--cond); font-size: 11.5px; color: var(--faint); }
+  & .code-bar { border-radius: 0; background: var(--panel); }
+  & .code-btn, & .pz-btn { border-radius: 0; font-family: var(--cond); font-size: 12px; background: var(--panel); border-color: var(--fg-strong); color: var(--fg); }
+
+  & table { font-size: 14px; border: 1.5px solid var(--fg-strong); }
+  & th, & td { border: 1px solid var(--border-strong); padding: 7px 11px; }
+  & th {
+    background: var(--panel-2); text-transform: none; letter-spacing: 0; font-family: var(--cond);
+    font-size: 13px; font-weight: 600; color: var(--fg-strong); border-bottom: 1.5px solid var(--fg-strong);
+  }
+  & tbody tr:hover td { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+
+  /* Тип врезки передаёт штриховка слева. */
+  & .note, & .warn, & .ok {
+    position: relative; border-radius: 0; background: var(--panel); font-size: 14.5px;
+    border: 1px solid var(--c); padding: 12px 16px 12px 34px;
+  }
+  & .note { --c: var(--accent); }
+  & .warn { --c: var(--red); }
+  & .ok { --c: var(--emerald); }
+  & .note::before, & .warn::before, & .ok::before {
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 18px;
+    border-right: 1px solid var(--c);
+    background: repeating-linear-gradient(-45deg, var(--c) 0 1px, transparent 1px 6px);
+  }
+  & .ok::before { background: repeating-linear-gradient(0deg, var(--c) 0 1px, transparent 1px 5px); }
+
+  & blockquote { border-left: 3px double var(--fg-strong); color: var(--fg); padding-left: 14px; }
+  & .cards { gap: 0; border: 1.5px solid var(--fg-strong); grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+  & .card { border: none; border-radius: 0; outline: 1px solid var(--border-strong); background: var(--panel); font-size: 13.5px; }
+  & .card:hover { background: var(--bg); }
+  & .card h4 { font-family: var(--cond); font-size: 15px; }
+  & kbd { border-radius: 0; font-family: var(--mono); border-color: var(--fg-strong); }
+
+  & pre.mermaid[data-processed] {
+    border-radius: 0; border: 1px solid var(--fg-strong); background-color: var(--panel);
+    background-image:
+      linear-gradient(var(--grid) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+    background-size: 20px 20px;
+  }
+
+  @media (min-width: 1080px) {
+    & nav.toc { top: 84px; border: 1.5px solid var(--fg-strong); background: var(--panel); padding: 0 0 6px; counter-reset: t2; font-family: var(--cond); font-size: 13px; }
+    & nav.toc .toc-title {
+      text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--fg-strong);
+      padding: 7px 12px; margin: 0 0 6px; border-bottom: 1px solid var(--fg-strong);
+    }
+    & nav.toc a { border-left: 3px solid transparent; padding: 3px 12px 3px 9px; color: var(--muted); }
+    & nav.toc a.d2 { counter-increment: t2; counter-reset: t3; }
+    & nav.toc a.d2::before { content: counter(t2) "  "; color: var(--faint); white-space: pre; }
+    & nav.toc a.d3 { counter-increment: t3; padding-left: 26px; font-size: 12.5px; }
+    & nav.toc a.d3::before { content: counter(t2) "." counter(t3) "  "; color: var(--faint); white-space: pre; }
+    & nav.toc a:hover { color: var(--fg-strong); border-left-color: var(--border-strong); }
+    & nav.toc a.active { background: var(--panel-2); color: var(--fg-strong); border-left-color: var(--accent); }
+  }
+
+  & footer.doc {
+    max-width: calc(var(--page) - 48px); margin: 0 auto 56px; padding: 0; gap: 0;
+    border: 2px solid var(--fg-strong); border-top: none; background: var(--bg);
+    font-family: var(--cond); font-size: 12.5px; color: var(--fg);
+  }
+  & footer.doc > * { padding: 7px 14px; border-right: 1px solid var(--fg-strong); color: var(--fg); }
+  & footer.doc > span:not(:only-child) { display: none; }
+  & footer.doc::after { content: "Лист 1    Листов 1"; white-space: pre; margin-left: auto; padding: 7px 14px; border-left: 1px solid var(--fg-strong); }
+}
