@@ -122,6 +122,7 @@ export default function App() {
       if (e.key === 'Escape' && inSearch) {
         setQuery('');
         setPicked([]);
+        setShowStale(false);
         inputRef.current?.blur();
       }
     };
