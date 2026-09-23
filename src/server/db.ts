@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
+import { parseFrontmatter } from './render.ts';
+
 /** Роль токена, которым заметка создана. Заметки до появления ролей — admin. */
 export type NoteOwner = 'admin' | 'read';
 
@@ -15,6 +17,7 @@ export interface NoteRow {
   plain: string;
   tags: string;
   owner: NoteOwner;
+  stale_after: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -28,9 +31,20 @@ export interface NoteListItem {
   uuid: string;
   title: string;
   tags: string[];
+  stale_after: string | null;
+  /** Посчитано сервером в поясе NOTES_TZ: клиенту в другом поясе дату не сравнивать. */
+  stale: boolean;
   created_at: string;
   updated_at: string;
   snippet: string;
+}
+
+/** Отбор индекса: без `withStale` устаревшие заметки в выборку не попадают. */
+export interface NoteFilter {
+  query?: string;
+  tags?: string[];
+  owner?: NoteOwner;
+  withStale?: boolean;
 }
 
 /** Временная ссылка на заметку: открывает страницу без токена до `expires_at`. */
@@ -62,6 +76,7 @@ db.exec(`
     search     TEXT NOT NULL,
     tags       TEXT NOT NULL DEFAULT '[]',
     owner      TEXT NOT NULL DEFAULT 'admin',
+    stale_after TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -76,10 +91,44 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS shares_note_uuid ON shares(note_uuid);
 `);
 
+const hasColumn = (name: string) =>
+  db.query('PRAGMA table_info(notes)').all().some((c) => (c as { name: string }).name === name);
+
 // Заметки, созданные до появления ролей, остаются за admin: дефолт колонки
 // закрывает и уже лежащие строки, поэтому отдельного UPDATE не нужно.
-if (!db.query('PRAGMA table_info(notes)').all().some((c) => (c as { name: string }).name === 'owner')) {
+if (!hasColumn('owner')) {
   db.exec("ALTER TABLE notes ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'");
+}
+// Заметки, опубликованные со stale_after до появления колонки, получили бы NULL и
+// оставались бессрочными до следующей правки: срок достаём из сохранённого markdown.
+if (!hasColumn('stale_after')) {
+  db.transaction(() => {
+    db.exec('ALTER TABLE notes ADD COLUMN stale_after TEXT');
+    const rows = db.query('SELECT uuid, markdown FROM notes').all() as Pick<NoteRow, 'uuid' | 'markdown'>[];
+    const update = db.query('UPDATE notes SET stale_after = ? WHERE uuid = ?');
+    for (const row of rows) {
+      const staleAfter = parseFrontmatter(row.markdown).data.stale_after;
+      if (staleAfter) update.run(staleAfter, row.uuid);
+    }
+  })();
+}
+
+// Пояс задаётся явно: в контейнере TZ не выставлен, и по его часам (UTC) заметка
+// с `stale_after` на завтра висела бы до 03:00 МСК. Кривой NOTES_TZ роняет старт.
+const dayFmt = new Intl.DateTimeFormat('en-CA', {
+  timeZone: process.env.NOTES_TZ ?? 'Europe/Moscow',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+/** Сегодня в поясе NOTES_TZ, `YYYY-MM-DD`: с этой строкой сравнивается `stale_after`. */
+export function today(): string {
+  return dayFmt.format(new Date());
+}
+
+export function isStale(staleAfter: string | null): boolean {
+  return staleAfter !== null && staleAfter <= today();
 }
 
 export function upsertNote(note: {
@@ -91,6 +140,7 @@ export function upsertNote(note: {
   plain: string;
   tags: string[];
   owner: NoteOwner;
+  stale_after: string | null;
 }): NoteRow {
   const now = new Date().toISOString();
   // search — заранее приведённая к нижнему регистру копия: LIKE в SQLite
@@ -102,11 +152,11 @@ export function upsertNote(note: {
   // заметке read) не должна переписывать владельца — иначе автор потеряет
   // доступ к собственной заметке после первой же admin-правки
   db.query(
-    `INSERT INTO notes (uuid, title, markdown, html, toc, plain, search, tags, owner, created_at, updated_at)
-     VALUES ($uuid, $title, $markdown, $html, $toc, $plain, $search, $tags, $owner, $now, $now)
+    `INSERT INTO notes (uuid, title, markdown, html, toc, plain, search, tags, owner, stale_after, created_at, updated_at)
+     VALUES ($uuid, $title, $markdown, $html, $toc, $plain, $search, $tags, $owner, $stale_after, $now, $now)
      ON CONFLICT(uuid) DO UPDATE SET
        title = $title, markdown = $markdown, html = $html, toc = $toc,
-       plain = $plain, search = $search, tags = $tags, updated_at = $now`,
+       plain = $plain, search = $search, tags = $tags, stale_after = $stale_after, updated_at = $now`,
   ).run({
     $uuid: note.uuid,
     $title: note.title,
@@ -117,6 +167,7 @@ export function upsertNote(note: {
     $search: search,
     $tags: JSON.stringify(note.tags),
     $owner: note.owner,
+    $stale_after: note.stale_after,
     $now: now,
   });
 
@@ -188,18 +239,20 @@ export function sweepExpiredShares(): number {
   return db.query('DELETE FROM shares WHERE expires_at <= ?').run(new Date().toISOString()).changes;
 }
 
-/** `owner` сужает выборку до заметок одной роли: read видит в индексе только свои. */
-export function listNotes(
-  query: string,
-  tags: string[] = [],
-  owner?: NoteOwner,
-  limit = 200,
-): NoteListItem[] {
+/**
+ * WHERE по фильтру индекса. `owner` сужает выборку до заметок одной роли: read
+ * видит в индексе только свои. `stale` переопределяет `withStale`: true — только
+ * устаревшие (для счётчика), false — только живые.
+ */
+function filterWhere(
+  { query = '', tags = [], owner, withStale = false }: NoteFilter,
+  stale: boolean | undefined = withStale ? undefined : false,
+): { sql: string; params: string[] } {
   const q = query.trim().toLowerCase();
   const picked = tags.map((t) => t.trim()).filter(Boolean);
 
   const where: string[] = [];
-  const params: (string | number)[] = [];
+  const params: string[] = [];
 
   if (owner) {
     where.push('owner = ?');
@@ -215,46 +268,66 @@ export function listNotes(
     where.push('EXISTS (SELECT 1 FROM json_each(notes.tags) WHERE value = ?)');
     params.push(tag);
   }
+  if (stale === true) {
+    where.push('stale_after IS NOT NULL AND stale_after <= ?');
+    params.push(today());
+  }
+  if (stale === false) {
+    where.push('(stale_after IS NULL OR stale_after > ?)');
+    params.push(today());
+  }
+
+  return { sql: where.length ? `WHERE ${where.join(' AND ')}` : '', params };
+}
+
+export function listNotes(filter: NoteFilter, limit = 200): NoteListItem[] {
+  const { sql, params } = filterWhere(filter);
 
   const rows = db
     .query(
-      `SELECT uuid, title, plain, tags, created_at, updated_at
-         FROM notes ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      `SELECT uuid, title, plain, tags, stale_after, created_at, updated_at
+         FROM notes ${sql}
          ORDER BY updated_at DESC LIMIT ?`,
     )
     .all(...params, limit) as NoteRow[];
 
+  const q = (filter.query ?? '').trim().toLowerCase();
   return rows.map((row) => ({
     uuid: row.uuid,
     title: row.title,
     tags: JSON.parse(row.tags) as string[],
+    stale_after: row.stale_after,
+    stale: isStale(row.stale_after),
     created_at: row.created_at,
     updated_at: row.updated_at,
     snippet: snippet(row.plain, q),
   }));
 }
 
-/** Все теги с числом заметок — из них рисуется фильтр в индексе. */
-export function listTags(owner?: NoteOwner): TagCount[] {
+/** Сколько устаревших заметок подходит под тот же отбор — для переключателя в индексе. */
+export function countStale(filter: NoteFilter): number {
+  const { sql, params } = filterWhere(filter, true);
+  return (db.query(`SELECT count(*) AS n FROM notes ${sql}`).get(...params) as { n: number }).n;
+}
+
+/** Теги видимых заметок с их числом — из них рисуется фильтр в индексе. */
+export function listTags(owner?: NoteOwner, withStale = false): TagCount[] {
+  const { sql, params } = filterWhere({ owner, withStale });
   return db
     .query(
       `SELECT value AS tag, count(*) AS count
          FROM notes, json_each(notes.tags)
-         ${owner ? 'WHERE owner = ?' : ''}
+         ${sql}
          GROUP BY value
          ORDER BY count DESC, value ASC`,
     )
-    .all(...(owner ? [owner] : [])) as TagCount[];
+    .all(...params) as TagCount[];
 }
 
-export function countNotes(owner?: NoteOwner): number {
-  const row = (
-    owner
-      ? db.query('SELECT count(*) AS n FROM notes WHERE owner = ?').get(owner)
-      : db.query('SELECT count(*) AS n FROM notes').get()
-  ) as { n: number };
-
-  return row.n;
+/** Без `withStale` — только живые; `countNotes()` без аргументов считает все заметки. */
+export function countNotes(owner?: NoteOwner, withStale = true): number {
+  const { sql, params } = filterWhere({ owner, withStale });
+  return (db.query(`SELECT count(*) AS n FROM notes ${sql}`).get(...params) as { n: number }).n;
 }
 
 function snippet(plain: string, q: string, width = 160): string {

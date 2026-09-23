@@ -17,6 +17,8 @@ export interface Frontmatter {
   title?: string;
   uuid?: string;
   tags?: string[];
+  /** OKF `stale_after`: с этой даты (`YYYY-MM-DD`) заметка считается устаревшей. */
+  stale_after?: string;
 }
 
 marked.use({
@@ -69,6 +71,10 @@ export function parseFrontmatter(source: string): { data: Frontmatter; body: str
 
     if (key === 'title') data.title = value;
     if (key === 'uuid') data.uuid = value;
+    if (key === 'stale_after') {
+      const date = unquote(stripYamlComment(kv[2]!.trim()));
+      if (isIsoDate(date)) data.stale_after = date;
+    }
     if (key === 'tags') {
       data.tags = value
         .replace(/^\[|\]$/g, '')
@@ -79,6 +85,27 @@ export function parseFrontmatter(source: string): { data: Frontmatter; body: str
   }
 
   return { data, body: source.slice(match[0].length) };
+}
+
+/**
+ * Хвостовой YAML-комментарий (` # …`) вне кавычек. Только для stale_after:
+ * в title ` #` встречается как текст («Issue #5»), и там его не режем.
+ */
+function stripYamlComment(value: string): string {
+  const quoted = /^(["'])(.*?)\1(\s+#.*)?$/.exec(value);
+  if (quoted) return `${quoted[1]}${quoted[2]}${quoted[1]}`;
+  return value.replace(/\s+#.*$/, '');
+}
+
+function unquote(value: string): string {
+  return value.replace(/^["']|["']$/g, '');
+}
+
+/** Строго `YYYY-MM-DD` и реальная дата: `2026-02-30` отвергается, а не переезжает на март. */
+function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
 }
 
 export function renderMarkdown(source: string, fallbackTitle?: string): RenderedNote {

@@ -2,7 +2,7 @@ import clsx from 'clsx';
 import { Sparkles, X } from 'lucide-react';
 import { useEffect } from 'react';
 
-import { CHANGELOG } from './lib/changelog.ts';
+import { CHANGELOG, changelogKey } from './lib/changelog.ts';
 
 const dateFmt = new Intl.DateTimeFormat('ru-RU', {
   day: '2-digit',
@@ -10,7 +10,7 @@ const dateFmt = new Intl.DateTimeFormat('ru-RU', {
   year: 'numeric',
 });
 
-/** `fresh` — даты записей, помеченных как новые для этого пользователя. */
+/** `fresh` — ключи (`changelogKey`) записей, помеченных как новые для этого пользователя. */
 export function WhatsNew({ fresh, onClose }: { fresh: string[]; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -53,10 +53,10 @@ export function WhatsNew({ fresh, onClose }: { fresh: string[]; onClose: () => v
 
         <div className="flex flex-col gap-5 overflow-y-auto px-4 py-4">
           {CHANGELOG.map((entry) => (
-            <div key={entry.date}>
+            <div key={changelogKey(entry)}>
               <div className="flex items-center gap-2">
                 <span className="text-[12px] font-semibold text-zinc-100">{entry.title}</span>
-                {fresh.includes(entry.date) && (
+                {fresh.includes(changelogKey(entry)) && (
                   <span className="rounded border border-sky-700 bg-sky-500/15 px-1 py-px text-[9px] font-semibold tracking-wide text-sky-300">
                     NEW
                   </span>
