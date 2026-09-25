@@ -132,6 +132,8 @@ for (const sample of SAMPLES) {
     tags: data.tags ?? sample.tags,
     owner: 'admin',
     stale_after: data.stale_after ?? null,
+    due: data.due ?? null,
+    done: data.done ?? null,
   });
 
   console.log(`+ ${sample.uuid}  ${rendered.title}`);

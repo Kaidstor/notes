@@ -19,7 +19,14 @@ export interface Frontmatter {
   tags?: string[];
   /** OKF `stale_after`: с этой даты (`YYYY-MM-DD`) заметка считается устаревшей. */
   stale_after?: string;
+  description?: string;
+  /** Отложенная задача: с этой даты её пора выполнять. */
+  due?: string;
+  /** Отложенная задача: дата выполнения; задача с ней в очередь не попадает. */
+  done?: string;
 }
+
+const DATE_KEYS = ['stale_after', 'due', 'done'] as const;
 
 marked.use({
   gfm: true,
@@ -71,9 +78,10 @@ export function parseFrontmatter(source: string): { data: Frontmatter; body: str
 
     if (key === 'title') data.title = value;
     if (key === 'uuid') data.uuid = value;
-    if (key === 'stale_after') {
+    if (key === 'description') data.description = value;
+    if ((DATE_KEYS as readonly string[]).includes(key)) {
       const date = unquote(stripYamlComment(kv[2]!.trim()));
-      if (isIsoDate(date)) data.stale_after = date;
+      if (isIsoDate(date)) data[key as (typeof DATE_KEYS)[number]] = date;
     }
     if (key === 'tags') {
       data.tags = value
@@ -88,7 +96,7 @@ export function parseFrontmatter(source: string): { data: Frontmatter; body: str
 }
 
 /**
- * Хвостовой YAML-комментарий (` # …`) вне кавычек. Только для stale_after:
+ * Хвостовой YAML-комментарий (` # …`) вне кавычек. Только для дат:
  * в title ` #` встречается как текст («Issue #5»), и там его не режем.
  */
 function stripYamlComment(value: string): string {

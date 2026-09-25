@@ -10,7 +10,9 @@
     "build:vendor": "bun build src/web/mermaid.ts --target browser --format esm --minify --splitting --outdir dist/web/vendor",
     "build:server": "bun build src/server/index.ts --target bun --minify --outfile dist/server.js",
     "start": "bun src/server/index.ts",
-    "seed": "bun scripts/seed.ts"
+    "seed": "bun scripts/seed.ts",
+    "build:cli": "bun build cli/notes-kai.ts --compile --minify --outfile dist/notes-kai",
+    "install:cli": "bun build cli/notes-kai.ts --compile --minify --outfile ~/.local/bin/notes-kai"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

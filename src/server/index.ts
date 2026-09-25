@@ -6,8 +6,9 @@ import { serveStatic } from 'hono/bun';
 import { getCookie, setCookie } from 'hono/cookie';
 import { logger } from 'hono/logger';
 
-import type { NoteOwner, ShareRow } from './db.ts';
+import type { NoteOwner, ScheduleState, ShareRow } from './db.ts';
 import {
+  SCHEDULE_TAG,
   countNotes,
   countStale,
   createShare,
@@ -15,10 +16,12 @@ import {
   getNote,
   getShare,
   listNotes,
+  listSchedule,
   listShares,
   listTags,
   revokeShare,
   sweepExpiredShares,
+  today,
   upsertNote,
 } from './db.ts';
 import { renderGate, renderNotFound, renderNotePage, renderShareGone } from './page.ts';
@@ -180,6 +183,8 @@ app.post('/api/notes', guardToken, async (c) => {
     tags: payload.tags ?? data.tags ?? [],
     owner,
     stale_after: data.stale_after ?? null,
+    due: data.due ?? null,
+    done: data.done ?? null,
   });
 
   return c.json({
@@ -226,6 +231,29 @@ app.get('/api/notes', guardToken, (c) => {
   });
 });
 
+// --- отложенные задачи агента --------------------------------------------------
+
+const SCHEDULE_STATES: ScheduleState[] = ['due', 'open', 'done', 'all'];
+
+// Та же область видимости, что у индекса: read видит только свои задачи.
+app.get('/api/schedule', guardToken, (c) => {
+  const state = (c.req.query('state') ?? 'due') as ScheduleState;
+  if (!SCHEDULE_STATES.includes(state)) {
+    return c.json({ error: `state — одно из: ${SCHEDULE_STATES.join(', ')}` }, 400);
+  }
+
+  const role = c.get('role');
+  const tasks = listSchedule(state, c.req.queries('tag') ?? [], role === 'admin' ? undefined : role);
+
+  return c.json({
+    role,
+    tag: SCHEDULE_TAG,
+    state,
+    today: today(),
+    tasks: tasks.map((task) => ({ ...task, url: `${PUBLIC_URL}/${task.uuid}` })),
+  });
+});
+
 // --- редактор в браузере -----------------------------------------------------
 
 app.get('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, (c) => {
@@ -269,6 +297,8 @@ app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, async (c) => {
     tags: data.tags ?? (JSON.parse(existing.tags) as string[]),
     owner,
     stale_after: data.stale_after ?? null,
+    due: data.due ?? null,
+    done: data.done ?? null,
   });
 
   return c.json({ uuid: note.uuid, title: note.title, updated_at: note.updated_at });
