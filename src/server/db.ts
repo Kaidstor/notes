@@ -109,6 +109,14 @@ db.exec(`
     expires_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS shares_note_uuid ON shares(note_uuid);
+  CREATE TABLE IF NOT EXISTS images (
+    id         TEXT PRIMARY KEY,
+    mime       TEXT NOT NULL,
+    data       BLOB NOT NULL,
+    size       INTEGER NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
 `);
 
 const hasColumn = (name: string) =>
@@ -262,6 +270,54 @@ export function revokeShare(token: string, createdBy?: NoteOwner): boolean {
 
 export function sweepExpiredShares(): number {
   return db.query('DELETE FROM shares WHERE expires_at <= ?').run(new Date().toISOString()).changes;
+}
+
+// --- картинки ------------------------------------------------------------------
+
+export interface ImageRow {
+  id: string;
+  mime: string;
+  data: Uint8Array<ArrayBuffer>;
+  size: number;
+  created_by: NoteOwner;
+  created_at: string;
+}
+
+/** Сутки на то, чтобы вставленную картинку сохранили в заметке, иначе её сносит уборка. */
+const ORPHAN_IMAGE_TTL_MS = 24 * 60 * 60 * 1000;
+
+export function createImage(mime: string, data: Uint8Array, createdBy: NoteOwner): ImageRow {
+  sweepOrphanImages();
+
+  // 16 байт в base64url это ровно 22 символа: на эту длину завязан шаблон
+  // маршрутов `/img/:file` и `/s/:token/img/:file`.
+  const id = randomBytes(16).toString('base64url');
+  db.query(
+    `INSERT INTO images (id, mime, data, size, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(id, mime, data, data.byteLength, createdBy, new Date().toISOString());
+
+  return getImage(id)!;
+}
+
+export function getImage(id: string): ImageRow | null {
+  return db.query('SELECT * FROM images WHERE id = ?').get(id) as ImageRow | null;
+}
+
+/**
+ * Картинки, которые не упоминает ни одна заметка. Связи «картинка — заметка» нет
+ * намеренно: markdown с картинкой копируют между заметками, и удаление исходной
+ * заметки не должно ломать копию.
+ */
+export function sweepOrphanImages(): number {
+  const before = new Date(Date.now() - ORPHAN_IMAGE_TTL_MS).toISOString();
+  return db
+    .query(
+      `DELETE FROM images
+        WHERE created_at < ?
+          AND NOT EXISTS (SELECT 1 FROM notes WHERE instr(notes.markdown, images.id) > 0)`,
+    )
+    .run(before).changes;
 }
 
 /**

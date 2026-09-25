@@ -993,7 +993,7 @@ ${scripts.map((script) => `<script>${script}</script>`).join('\n')}
 
 export interface NotePageOptions {
   /** Страница открыта по временной ссылке: без правки, исходника и выхода на индекс. */
-  share?: { expiresAt: string };
+  share?: { token: string; expiresAt: string };
 }
 
 export function renderNotePage(note: NoteRow, siteName: string, options: NotePageOptions = {}): string {
@@ -1071,6 +1071,12 @@ export function renderNotePage(note: NoteRow, siteName: string, options: NotePag
   const scripts = share ? [LOCALTIME] : [DELETE_CHIP, SHARE_PANEL];
   if (note.html.includes('class="mermaid"')) scripts.push(MERMAID);
 
+  // `/img/…` за токеном, которого у читателя по ссылке нет: картинки заметки он
+  // получает через саму ссылку.
+  const html = share
+    ? note.html.replace(/(src|href)="\/img\//g, `$1="/s/${share.token}/img/`)
+    : note.html;
+
   return shell(
     note.title,
     `<div class="topbar">
@@ -1093,7 +1099,7 @@ export function renderNotePage(note: NoteRow, siteName: string, options: NotePag
       </div>
     </header>
     <article>
-${note.html}
+${html}
     </article>
   </div>
   ${tocHtml}
