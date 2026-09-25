@@ -1,40 +1,56 @@
 #!/usr/bin/env bun
 /**
- * notes-kai — отложенные задачи агента в notes: заметки с тегом `agent:schedule`,
- * дата исполнения — `due` во frontmatter, отметка выполнения — `done`.
+ * notes-kai — CLI сервиса notes: публикация заметок, чтение, поиск, удаление,
+ * временные ссылки и отложенные задачи агента (заметки с тегом `agent:schedule`,
+ * дата исполнения — `due` во frontmatter, отметка выполнения — `done`).
  *
  * Состояние задачи целиком живёт в её markdown: CLI правит frontmatter и отправляет
  * заметку обратно, поэтому то же самое можно сделать руками в редакторе на сайте.
  */
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const TAG = 'agent:schedule';
 const DEFAULT_HOST = 'https://notes.kaidstor.ru';
-const DEFAULT_TOKEN_REF = 'notes/NOTES_ADMIN_TOKEN';
+const LOCAL_HOST = 'http://localhost:3000';
+const ADMIN_TOKEN_REF = 'notes/NOTES_ADMIN_TOKEN';
+const READ_TOKEN_REF = 'notes/NOTES_READ_TOKEN';
 const REQUEST_TIMEOUT_MS = 20_000;
+
+const TTL: Record<string, number> = { '1h': 3600, '1d': 86400, '7d': 604800 };
 
 // Коды совпадают по смыслу с yk-kai, ci-kai и sec.
 const EXIT = { ok: 0, notApplied: 1, tool: 2, notFound: 3, timeout: 4 } as const;
 
-const USAGE = `notes-kai — отложенные задачи агента в notes (тег ${TAG})
+const USAGE = `notes-kai — заметки на notes.kaidstor.ru и отложенные задачи агента (тег ${TAG})
 
 Использование:
   notes-kai <команда> [аргументы]
 
+Заметки:
+  publish <файл.md | -> [--pin] [--uuid U] [--title T] [--tags a,b]
+                                 опубликовать; uuid во frontmatter или --uuid — обновить ту же
+                                 страницу; --pin дописывает uuid: и url: в начало frontmatter файла
+  get <uuid>                     исходный markdown заметки
+  list [запрос] [--tag T]        что опубликовано, включая устаревшие
+  delete <uuid>                  удалить заметку вместе с её ссылками
+  share <uuid> [--ttl 1h|1d|7d]  ссылка без токена, по умолчанию на 1d
+  shares <uuid>                  активные ссылки заметки
+  unshare <token>                отозвать ссылку раньше срока
+
 Задачи:
-  due [--tag T]                  задачи, которые пора делать: due ≤ сегодня, не выполнены
-  tasks [--done | --all] [--tag T]
-                                 открытые задачи по сроку; --done выполненные, --all все
+  due [--open | --done | --all] [--tag T]
+                                 задачи, которые пора делать: due ≤ сегодня, не выполнены;
+                                 --open все невыполненные, --done выполненные, --all все
   add <файл.md | -> --due <дата> [--tags a,b]
                                  завести задачу: due и тег ${TAG} дописываются во frontmatter;
                                  uuid во frontmatter файла — обновить ту же задачу
-  get <uuid>                     markdown задачи
   done <uuid> [--result текст]   выполнено: done во frontmatter и раздел «## Результат <дата>»;
                                  без --result текст читается из stdin
   snooze <uuid> <дата>           перенести срок
   reopen <uuid>                  снять отметку о выполнении
+  Задача — обычная заметка: читать её get, удалять delete.
 
 Служебное:
   doctor                         токен, сервер, число открытых задач
@@ -46,14 +62,16 @@ const USAGE = `notes-kai — отложенные задачи агента в n
   --human                        вывод для человека вместо JSON
   --json                         машиночитаемый вывод (по умолчанию)
   --host <url>                   сервер; по умолчанию $NOTES_HOST или ${DEFAULT_HOST}
+  --local                        сервер ${LOCAL_HOST}
   -h, --help                     справка
 
-Токен: $NOTES_ADMIN_TOKEN или $NOTES_READ_TOKEN, иначе sec get \${NOTES_TOKEN_REF:-${DEFAULT_TOKEN_REF}}.
-Read-токен видит и правит только задачи, заведённые им самим.
+Токен: $NOTES_ADMIN_TOKEN, иначе $NOTES_READ_TOKEN, иначе sec get ${ADMIN_TOKEN_REF},
+иначе sec get ${READ_TOKEN_REF}; $NOTES_TOKEN_REF заменяет оба sec-адреса одним.
+Read-токен правит, удаляет и видит в list только заметки и задачи, заведённые им самим.
 
 Коды выхода:
   0 сделано                      2 ошибка инструмента или аргументов   4 сервер не ответил
-  1 сервер не применил правку    3 задача не найдена`;
+  1 сервер не применил правку    3 заметка, задача или ссылка не найдена`;
 
 // --- вывод -------------------------------------------------------------------
 
@@ -96,8 +114,26 @@ interface Args {
   flags: Map<string, string | true>;
 }
 
-const VALUE_FLAGS = new Set(['--tag', '--tags', '--due', '--result', '--host']);
-const BOOL_FLAGS = new Set(['--human', '--json', '--done', '--all', '-h', '--help']);
+const VALUE_FLAGS = new Set(['--tag', '--tags', '--due', '--result', '--host', '--uuid', '--title', '--ttl']);
+const BOOL_FLAGS = new Set(['--human', '--json', '--open', '--done', '--all', '--pin', '--local', '-h', '--help']);
+
+const GLOBAL_FLAGS = new Set(['--human', '--json', '--host', '--local', '-h', '--help']);
+const COMMAND_FLAGS: Record<string, string[]> = {
+  publish: ['--pin', '--uuid', '--title', '--tags'],
+  get: [],
+  list: ['--tag'],
+  delete: [],
+  share: ['--ttl'],
+  shares: [],
+  unshare: [],
+  due: ['--open', '--done', '--all', '--tag'],
+  add: ['--due', '--tags'],
+  done: ['--result'],
+  snooze: [],
+  reopen: [],
+  doctor: [],
+  version: [],
+};
 
 function parseArgs(argv: string[]): Args {
   const positional: string[] = [];
@@ -137,6 +173,19 @@ function need(args: Args, index: number, what: string): string {
   const value = args.positional[index];
   if (!value) throw new CliError('usage', `нужен аргумент: ${what}`);
   return value;
+}
+
+function tagList(spec: string | undefined): string[] {
+  return (spec ?? '').split(',').map((t) => t.trim()).filter(Boolean);
+}
+
+const UUID = /^[0-9a-fA-F-]{36}$/;
+const SHARE_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+
+function needUuid(args: Args, index = 0): string {
+  const uuid = need(args, index, 'uuid');
+  if (!UUID.test(uuid)) throw new CliError('usage', `«${uuid}» — не uuid`);
+  return uuid;
 }
 
 // --- даты --------------------------------------------------------------------
@@ -218,29 +267,48 @@ function addTags(markdown: string, extra: string[]): string {
   return setKey(markdown, 'tags', `[${tags.join(', ')}]`);
 }
 
+/**
+ * Дописывает uuid и url первыми строками frontmatter: uuid делает следующую публикацию
+ * обновлением той же страницы, url оставляет в репозитории грепаемую ссылку.
+ */
+function pinFile(file: string, uuid: string, url: string): void {
+  let source = readFileSync(file, 'utf8');
+
+  if (!/^---\r?\n[\s\S]*?^uuid:/m.test(source)) {
+    source = /^---\r?\n/.test(source)
+      ? source.replace(/^---\r?\n/, `---\nuuid: ${uuid}\n`)
+      : `---\nuuid: ${uuid}\n---\n\n${source}`;
+  }
+
+  if (!/^---\r?\n[\s\S]*?^url:/m.test(source)) {
+    source = source.replace(/^---\r?\n/, `---\nurl: ${url}\n`);
+  }
+
+  writeFileSync(file, source);
+}
+
 // --- HTTP --------------------------------------------------------------------
 
 let host = '';
-let tokenCache: string | undefined;
+let tokenCache: { value: string; source: string } | undefined;
 
-function token(): string {
+/** Админский, если он есть, иначе read: под admin доступно всё. */
+function resolveToken(): { value: string; source: string } {
   if (tokenCache) return tokenCache;
 
-  const env = process.env.NOTES_ADMIN_TOKEN || process.env.NOTES_READ_TOKEN;
-  if (env) return (tokenCache = env.trim());
-
-  const ref = process.env.NOTES_TOKEN_REF || DEFAULT_TOKEN_REF;
-  const sec = spawnSync('sec', ['get', ref], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-  if (sec.error || sec.status !== 0 || !sec.stdout.trim()) {
-    throw new CliError('auth', `токен не найден: нет $NOTES_ADMIN_TOKEN и не прочитался sec get ${ref}`);
+  for (const name of ['NOTES_ADMIN_TOKEN', 'NOTES_READ_TOKEN']) {
+    const value = process.env[name]?.trim();
+    if (value) return (tokenCache = { value, source: `env:${name}` });
   }
-  return (tokenCache = sec.stdout.trim());
-}
 
-function tokenSource(): string {
-  if (process.env.NOTES_ADMIN_TOKEN) return 'env:NOTES_ADMIN_TOKEN';
-  if (process.env.NOTES_READ_TOKEN) return 'env:NOTES_READ_TOKEN';
-  return `sec:${process.env.NOTES_TOKEN_REF || DEFAULT_TOKEN_REF}`;
+  const refs = process.env.NOTES_TOKEN_REF ? [process.env.NOTES_TOKEN_REF] : [ADMIN_TOKEN_REF, READ_TOKEN_REF];
+  for (const ref of refs) {
+    const sec = spawnSync('sec', ['get', ref], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    const value = sec.error || sec.status !== 0 ? '' : sec.stdout.trim();
+    if (value) return (tokenCache = { value, source: `sec:${ref}` });
+  }
+
+  throw new CliError('auth', `токен не найден: нет $NOTES_ADMIN_TOKEN/$NOTES_READ_TOKEN и не прочитался sec get ${refs.join(', ')}`);
 }
 
 async function api<T>(method: string, path: string, body?: unknown, auth = true): Promise<T> {
@@ -249,7 +317,7 @@ async function api<T>(method: string, path: string, body?: unknown, auth = true)
     res = await fetch(`${host}${path}`, {
       method,
       headers: {
-        ...(auth ? { authorization: `Bearer ${token()}` } : {}),
+        ...(auth ? { authorization: `Bearer ${resolveToken().value}` } : {}),
         ...(body === undefined ? {} : { 'content-type': 'application/json' }),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -279,6 +347,16 @@ async function api<T>(method: string, path: string, body?: unknown, auth = true)
   return json as T;
 }
 
+/** 404 сервера («не найдено») с тем, чего именно нет. */
+async function orNotFound<T>(request: Promise<T>, what: string): Promise<T> {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof CliError && error.kind === 'not_found') throw new CliError('not_found', what);
+    throw error;
+  }
+}
+
 interface Task {
   uuid: string;
   title: string;
@@ -295,24 +373,72 @@ interface NoteJson {
   title: string;
   markdown: string;
   tags: string[];
+  created_at: string;
+  updated_at: string;
 }
 
-async function readNote(uuid: string): Promise<NoteJson> {
-  if (!/^[0-9a-fA-F-]{36}$/.test(uuid)) throw new CliError('usage', `«${uuid}» — не uuid`);
+interface Published {
+  uuid: string;
+  title: string;
+  url: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface NoteListItem {
+  uuid: string;
+  title: string;
+  tags: string[];
+  stale_after: string | null;
+  stale: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface Share {
+  token: string;
+  url: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+}
+
+// --- ядро: единственные пути к API заметок -------------------------------------
+
+function readNote(uuid: string): Promise<NoteJson> {
+  return orNotFound(api<NoteJson>('GET', `/api/notes/${uuid}`), `заметки ${uuid} нет`);
+}
+
+function publishNote(note: { markdown: string; uuid?: string; title?: string; tags?: string[] }): Promise<Published> {
+  return api<Published>('POST', '/api/notes', note);
+}
+
+function readSource(source: string): string {
+  let markdown: string;
   try {
-    return await api<NoteJson>('GET', `/api/notes/${uuid}`);
+    markdown = source === '-' ? readStdin() : readFileSync(source, 'utf8');
   } catch (error) {
-    if (error instanceof CliError && error.kind === 'not_found') {
-      throw new CliError('not_found', `задачи ${uuid} нет`);
-    }
-    throw error;
+    throw new CliError('usage', `файл ${source} не прочитан: ${(error as Error).message}`);
   }
+  if (!markdown.trim()) throw new CliError('usage', 'пустой markdown');
+  return markdown;
 }
 
-/** PUT и проверка, что сервер разобрал поля так, как их записали. */
-async function saveNote(uuid: string, markdown: string, expect: Partial<Pick<Task, 'due' | 'done'>>): Promise<Task> {
-  await api('PUT', `/api/notes/${uuid}`, { markdown });
-  return verify(uuid, expect);
+function readStdin(): string {
+  if (process.stdin.isTTY) return '';
+  return readFileSync(0, 'utf8');
+}
+
+// --- задачи: сохранение и проверка ---------------------------------------------
+
+/** Публикация по uuid и проверка, что сервер разобрал поля так, как их записали. */
+async function saveTask(note: NoteJson, markdown: string, expect: Partial<Pick<Task, 'due' | 'done'>>): Promise<Task> {
+  // POST без ключа tags во frontmatter обнуляет теги заметки (PUT редактора сохранял
+  // прежние), и задача, получившая тег параметром, молча выпала бы из очереди.
+  if (getKey(markdown, 'tags') === undefined && note.tags.length) markdown = addTags(markdown, note.tags);
+
+  await publishNote({ markdown, uuid: note.uuid });
+  return verify(note.uuid, expect);
 }
 
 async function verify(uuid: string, expect: Partial<Pick<Task, 'due' | 'done'>>): Promise<Task> {
@@ -327,11 +453,6 @@ async function verify(uuid: string, expect: Partial<Pick<Task, 'due' | 'done'>>)
     }
   }
   return task;
-}
-
-function readStdin(): string {
-  if (process.stdin.isTTY) return '';
-  return readFileSync(0, 'utf8');
 }
 
 // --- человеческий вывод ------------------------------------------------------
@@ -356,9 +477,91 @@ function printTasks(tasks: Task[], empty: string): void {
   }
 }
 
-// --- команды -----------------------------------------------------------------
+// --- команды: заметки ----------------------------------------------------------
 
-async function list(args: Args, state: 'due' | 'open' | 'done' | 'all'): Promise<never> {
+async function publish(args: Args): Promise<never> {
+  const source = need(args, 0, 'файл .md или «-» для stdin');
+  const pin = args.flags.has('--pin');
+  if (pin && source === '-') throw new CliError('usage', '--pin дописывает uuid в файл, а markdown пришёл из stdin');
+
+  const uuid = str(args, '--uuid');
+  if (uuid !== undefined && !UUID.test(uuid)) throw new CliError('usage', `--uuid «${uuid}» — не uuid`);
+
+  const tags = tagList(str(args, '--tags'));
+  const note = await publishNote({
+    markdown: readSource(source),
+    uuid,
+    title: str(args, '--title'),
+    tags: tags.length ? tags : undefined,
+  });
+  if (pin) pinFile(source, note.uuid, note.url);
+
+  return result(EXIT.ok, { ...note, pinned: pin }, () => {
+    console.log(note.url);
+    console.error(`«${note.title}» → ${note.uuid}`);
+  });
+}
+
+async function get(args: Args): Promise<never> {
+  const note = await readNote(needUuid(args));
+  return result(EXIT.ok, note, () => process.stdout.write(note.markdown.endsWith('\n') ? note.markdown : `${note.markdown}\n`));
+}
+
+async function list(args: Args): Promise<never> {
+  const query = new URLSearchParams({ stale: '1', q: args.positional.join(' ') });
+  for (const tag of str(args, '--tag')?.split('\n') ?? []) query.append('tag', tag);
+
+  const data = await api<{ role: string; notes: NoteListItem[] }>('GET', `/api/notes?${query}`);
+  // Под read-токеном пусто ≠ «на сервере ничего нет»: он видит только свои публикации.
+  if (data.role === 'read') warnings.push('read-токен: видны только заметки, опубликованные им');
+
+  return result(EXIT.ok, { role: data.role, notes: data.notes }, () => {
+    for (const note of data.notes) {
+      const stale = note.stale ? `  [устарела ${note.stale_after}]` : '';
+      console.log(`${note.uuid}  ${note.updated_at.slice(0, 10)}  ${note.title}${stale}`);
+    }
+  });
+}
+
+async function remove(args: Args): Promise<never> {
+  const uuid = needUuid(args);
+  await orNotFound(api('DELETE', `/api/notes/${uuid}`), `заметки ${uuid} нет`);
+  return result(EXIT.ok, { uuid, deleted: true }, () => console.log(`удалено: ${uuid}`));
+}
+
+async function share(args: Args): Promise<never> {
+  const uuid = needUuid(args);
+  const ttl = str(args, '--ttl') ?? '1d';
+  if (!TTL[ttl]) throw new CliError('usage', `--ttl принимает 1h, 1d или 7d, а не «${ttl}»`);
+
+  const link = await orNotFound(api<Share>('POST', `/api/notes/${uuid}/shares`, { ttl: TTL[ttl] }), `заметки ${uuid} нет`);
+  return result(EXIT.ok, link, () => {
+    console.log(link.url);
+    console.error(`до ${link.expires_at}`);
+  });
+}
+
+async function shares(args: Args): Promise<never> {
+  const uuid = needUuid(args);
+  const data = await orNotFound(api<{ shares: Share[] }>('GET', `/api/notes/${uuid}/shares`), `заметки ${uuid} нет`);
+  return result(EXIT.ok, data, () => {
+    if (!data.shares.length) console.error('активных ссылок нет');
+    for (const link of data.shares) console.log(`${link.token}  ${link.expires_at}`);
+  });
+}
+
+async function unshare(args: Args): Promise<never> {
+  const token = need(args, 0, 'токен ссылки');
+  if (!SHARE_TOKEN.test(token)) throw new CliError('usage', 'токен ссылки — 43 символа base64url, последний сегмент адреса /s/<token>');
+
+  // Чужая для read-токена ссылка отвечает тем же 404, что и несуществующая.
+  await orNotFound(api('DELETE', `/api/shares/${token}`), 'ссылки нет: истекла, отозвана или выдана другим токеном');
+  return result(EXIT.ok, { token, revoked: true }, () => console.log(`отозвано: ${token}`));
+}
+
+// --- команды: задачи -----------------------------------------------------------
+
+async function schedule(args: Args, state: 'due' | 'open' | 'done' | 'all'): Promise<never> {
   const query = new URLSearchParams({ state });
   for (const tag of str(args, '--tag')?.split('\n') ?? []) query.append('tag', tag);
 
@@ -376,14 +579,11 @@ async function add(args: Args): Promise<never> {
   if (!dueSpec) throw new CliError('usage', 'нужен --due <дата>');
   const due = parseDate(dueSpec);
 
-  let markdown = source === '-' ? readStdin() : readFileSync(source, 'utf8');
-  if (!markdown.trim()) throw new CliError('usage', 'пустой markdown');
-
-  const extra = (str(args, '--tags') ?? '').split(',').map((t) => t.trim()).filter(Boolean);
-  markdown = addTags(setKey(markdown, 'due', due), [...extra, TAG]);
+  let markdown = readSource(source);
+  markdown = addTags(setKey(markdown, 'due', due), [...tagList(str(args, '--tags')), TAG]);
   markdown = setKey(markdown, 'done', null);
 
-  const note = await api<{ uuid: string; title: string; url: string }>('POST', '/api/notes', { markdown });
+  const note = await publishNote({ markdown });
   const task = await verify(note.uuid, { due, done: null });
 
   return result(EXIT.ok, task, () => {
@@ -392,13 +592,8 @@ async function add(args: Args): Promise<never> {
   });
 }
 
-async function get(args: Args): Promise<never> {
-  const note = await readNote(need(args, 0, 'uuid'));
-  return result(EXIT.ok, note, () => process.stdout.write(note.markdown.endsWith('\n') ? note.markdown : `${note.markdown}\n`));
-}
-
 async function done(args: Args): Promise<never> {
-  const uuid = need(args, 0, 'uuid');
+  const uuid = needUuid(args);
   const text = (str(args, '--result') ?? readStdin()).trim();
   if (!text) throw new CliError('usage', 'нужен результат: --result <текст> или stdin');
 
@@ -413,23 +608,23 @@ async function done(args: Args): Promise<never> {
   if (!stale || stale > date) markdown = setKey(markdown, 'stale_after', date);
   markdown = `${markdown.replace(/\s*$/, '')}\n\n## Результат ${date}\n\n${text}\n`;
 
-  const task = await saveNote(uuid, markdown, { done: date });
+  const task = await saveTask(note, markdown, { done: date });
   return result(EXIT.ok, task, () => console.log(`выполнена: ${task.title}`));
 }
 
 async function snooze(args: Args): Promise<never> {
-  const uuid = need(args, 0, 'uuid');
+  const uuid = needUuid(args);
   const due = parseDate(need(args, 1, 'дата'));
 
   const note = await readNote(uuid);
   if (getKey(note.markdown, 'done')) warnings.push('задача выполнена: срок сменён, в очередь она вернётся только после reopen');
 
-  const task = await saveNote(uuid, setKey(note.markdown, 'due', due), { due });
+  const task = await saveTask(note, setKey(note.markdown, 'due', due), { due });
   return result(EXIT.ok, task, () => console.log(`срок ${task.due}: ${task.title}`));
 }
 
 async function reopen(args: Args): Promise<never> {
-  const uuid = need(args, 0, 'uuid');
+  const uuid = needUuid(args);
   const note = await readNote(uuid);
 
   const doneAt = getKey(note.markdown, 'done');
@@ -438,20 +633,21 @@ async function reopen(args: Args): Promise<never> {
   let markdown = setKey(note.markdown, 'done', null);
   if (getKey(markdown, 'stale_after') === doneAt) markdown = setKey(markdown, 'stale_after', null);
 
-  const task = await saveNote(uuid, markdown, { done: null });
+  const task = await saveTask(note, markdown, { done: null });
   return result(EXIT.ok, task, () => console.log(`снова открыта: ${task.title}, срок ${task.due ?? '—'}`));
 }
 
+// --- служебное -----------------------------------------------------------------
+
 async function doctor(): Promise<never> {
   const health = await api<{ ok: boolean; notes: number }>('GET', '/healthz', undefined, false);
-  const source = tokenSource();
-  const value = token();
+  const token = resolveToken();
   const open = await api<{ role: string; tasks: Task[] }>('GET', '/api/schedule?state=open');
   const due = open.tasks.filter((t) => t.overdue_days !== null && t.overdue_days >= 0).length;
 
   const data = {
     host,
-    token: { source, length: value.length },
+    token: { source: token.source, length: token.value.length },
     role: open.role,
     notes: health.notes,
     open: open.tasks.length,
@@ -459,7 +655,7 @@ async function doctor(): Promise<never> {
   };
   return result(EXIT.ok, data, () => {
     console.log(`сервер   ${host} — ok, заметок ${health.notes}`);
-    console.log(`токен    ${source} (${value.length} символов), роль ${open.role}`);
+    console.log(`токен    ${token.source} (${token.value.length} символов), роль ${open.role}`);
     console.log(`задачи   открытых ${open.tasks.length}, из них пора делать ${due}`);
   });
 }
@@ -472,22 +668,45 @@ async function main(): Promise<never> {
   const args = parseArgs(command ? argv.slice(1) : argv);
 
   human = args.flags.has('--human');
-  host = (str(args, '--host') ?? process.env.NOTES_HOST ?? DEFAULT_HOST).replace(/\/+$/, '');
+  const hostFlag = str(args, '--host') ?? (args.flags.has('--local') ? LOCAL_HOST : undefined);
+  host = (hostFlag ?? process.env.NOTES_HOST ?? DEFAULT_HOST).replace(/\/+$/, '');
 
   if (!command || args.flags.has('--help') || args.flags.has('-h')) {
     console.log(USAGE);
     process.exit(command || args.flags.size ? EXIT.ok : EXIT.tool);
   }
 
+  if (command === 'tasks') throw new CliError('usage', 'команды tasks больше нет: due --open, due --done или due --all');
+  const allowed = COMMAND_FLAGS[command];
+  if (!allowed) throw new CliError('usage', `неизвестная команда «${command}», см. notes-kai --help`);
+  for (const flag of args.flags.keys()) {
+    if (!GLOBAL_FLAGS.has(flag) && !allowed.includes(flag)) {
+      throw new CliError('usage', `флаг ${flag} не относится к команде ${command}`);
+    }
+  }
+
   switch (command) {
-    case 'due':
-      return list(args, 'due');
-    case 'tasks':
-      return list(args, args.flags.has('--all') ? 'all' : args.flags.has('--done') ? 'done' : 'open');
-    case 'add':
-      return add(args);
+    case 'publish':
+      return publish(args);
     case 'get':
       return get(args);
+    case 'list':
+      return list(args);
+    case 'delete':
+      return remove(args);
+    case 'share':
+      return share(args);
+    case 'shares':
+      return shares(args);
+    case 'unshare':
+      return unshare(args);
+    case 'due': {
+      const states = (['open', 'done', 'all'] as const).filter((s) => args.flags.has(`--${s}`));
+      if (states.length > 1) throw new CliError('usage', `--open, --done и --all взаимоисключающие, передано: ${states.join(', ')}`);
+      return schedule(args, states[0] ?? 'due');
+    }
+    case 'add':
+      return add(args);
     case 'done':
       return done(args);
     case 'snooze':
@@ -496,10 +715,8 @@ async function main(): Promise<never> {
       return reopen(args);
     case 'doctor':
       return doctor();
-    case 'version':
-      return result(EXIT.ok, { version: VERSION }, () => console.log(VERSION));
     default:
-      throw new CliError('usage', `неизвестная команда «${command}», см. notes-kai --help`);
+      return result(EXIT.ok, { version: VERSION }, () => console.log(VERSION));
   }
 }
 
