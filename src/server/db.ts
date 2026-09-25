@@ -18,7 +18,27 @@ export interface NoteRow {
   tags: string;
   owner: NoteOwner;
   stale_after: string | null;
+  due: string | null;
+  done: string | null;
   created_at: string;
+  updated_at: string;
+}
+
+/** Тег, которым помечены отложенные задачи агента. */
+export const SCHEDULE_TAG = 'agent:schedule';
+
+/** due — с `due` ≤ сегодня; open — все невыполненные; done — выполненные; all — все. */
+export type ScheduleState = 'due' | 'open' | 'done' | 'all';
+
+export interface ScheduleItem {
+  uuid: string;
+  title: string;
+  description: string | null;
+  tags: string[];
+  due: string | null;
+  done: string | null;
+  /** Сколько дней задача ждёт после `due`; 0 — срок сегодня, отрицательное — ещё не наступил. */
+  overdue_days: number | null;
   updated_at: string;
 }
 
@@ -99,16 +119,17 @@ const hasColumn = (name: string) =>
 if (!hasColumn('owner')) {
   db.exec("ALTER TABLE notes ADD COLUMN owner TEXT NOT NULL DEFAULT 'admin'");
 }
-// Заметки, опубликованные со stale_after до появления колонки, получили бы NULL и
-// оставались бессрочными до следующей правки: срок достаём из сохранённого markdown.
-if (!hasColumn('stale_after')) {
+// Заметки, опубликованные с датой во frontmatter до появления колонки, получили бы
+// NULL до следующей правки: дату достаём из сохранённого markdown.
+for (const column of ['stale_after', 'due', 'done'] as const) {
+  if (hasColumn(column)) continue;
   db.transaction(() => {
-    db.exec('ALTER TABLE notes ADD COLUMN stale_after TEXT');
+    db.exec(`ALTER TABLE notes ADD COLUMN ${column} TEXT`);
     const rows = db.query('SELECT uuid, markdown FROM notes').all() as Pick<NoteRow, 'uuid' | 'markdown'>[];
-    const update = db.query('UPDATE notes SET stale_after = ? WHERE uuid = ?');
+    const update = db.query(`UPDATE notes SET ${column} = ? WHERE uuid = ?`);
     for (const row of rows) {
-      const staleAfter = parseFrontmatter(row.markdown).data.stale_after;
-      if (staleAfter) update.run(staleAfter, row.uuid);
+      const value = parseFrontmatter(row.markdown).data[column];
+      if (value) update.run(value, row.uuid);
     }
   })();
 }
@@ -141,6 +162,8 @@ export function upsertNote(note: {
   tags: string[];
   owner: NoteOwner;
   stale_after: string | null;
+  due: string | null;
+  done: string | null;
 }): NoteRow {
   const now = new Date().toISOString();
   // search — заранее приведённая к нижнему регистру копия: LIKE в SQLite
@@ -152,11 +175,11 @@ export function upsertNote(note: {
   // заметке read) не должна переписывать владельца — иначе автор потеряет
   // доступ к собственной заметке после первой же admin-правки
   db.query(
-    `INSERT INTO notes (uuid, title, markdown, html, toc, plain, search, tags, owner, stale_after, created_at, updated_at)
-     VALUES ($uuid, $title, $markdown, $html, $toc, $plain, $search, $tags, $owner, $stale_after, $now, $now)
+    `INSERT INTO notes (uuid, title, markdown, html, toc, plain, search, tags, owner, stale_after, due, done, created_at, updated_at)
+     VALUES ($uuid, $title, $markdown, $html, $toc, $plain, $search, $tags, $owner, $stale_after, $due, $done, $now, $now)
      ON CONFLICT(uuid) DO UPDATE SET
-       title = $title, markdown = $markdown, html = $html, toc = $toc,
-       plain = $plain, search = $search, tags = $tags, stale_after = $stale_after, updated_at = $now`,
+       title = $title, markdown = $markdown, html = $html, toc = $toc, plain = $plain,
+       search = $search, tags = $tags, stale_after = $stale_after, due = $due, done = $done, updated_at = $now`,
   ).run({
     $uuid: note.uuid,
     $title: note.title,
@@ -168,6 +191,8 @@ export function upsertNote(note: {
     $tags: JSON.stringify(note.tags),
     $owner: note.owner,
     $stale_after: note.stale_after,
+    $due: note.due,
+    $done: note.done,
     $now: now,
   });
 
@@ -328,6 +353,55 @@ export function listTags(owner?: NoteOwner, withStale = false): TagCount[] {
 export function countNotes(owner?: NoteOwner, withStale = true): number {
   const { sql, params } = filterWhere({ owner, withStale });
   return (db.query(`SELECT count(*) AS n FROM notes ${sql}`).get(...params) as { n: number }).n;
+}
+
+/**
+ * Отложенные задачи — заметки с тегом `agent:schedule`, по возрастанию `due`.
+ * `tags` сужают выборку так же, как в индексе. Задача без `due` в `due` не попадает
+ * никогда: у неё нет даты, с которой её пора делать.
+ */
+export function listSchedule(state: ScheduleState, tags: string[] = [], owner?: NoteOwner): ScheduleItem[] {
+  const where = ['EXISTS (SELECT 1 FROM json_each(notes.tags) WHERE value = ?)'];
+  const params: string[] = [SCHEDULE_TAG];
+  const now = today();
+
+  if (owner) {
+    where.push('owner = ?');
+    params.push(owner);
+  }
+  for (const tag of tags.map((t) => t.trim()).filter(Boolean)) {
+    where.push('EXISTS (SELECT 1 FROM json_each(notes.tags) WHERE value = ?)');
+    params.push(tag);
+  }
+  if (state === 'due') {
+    where.push('done IS NULL AND due IS NOT NULL AND due <= ?');
+    params.push(now);
+  }
+  if (state === 'open') where.push('done IS NULL');
+  if (state === 'done') where.push('done IS NOT NULL');
+
+  const rows = db
+    .query(
+      `SELECT uuid, title, markdown, tags, due, done, updated_at FROM notes
+        WHERE ${where.join(' AND ')}
+        ORDER BY due IS NULL, due ASC, updated_at DESC`,
+    )
+    .all(...params) as NoteRow[];
+
+  return rows.map((row) => ({
+    uuid: row.uuid,
+    title: row.title,
+    description: parseFrontmatter(row.markdown).data.description ?? null,
+    tags: JSON.parse(row.tags) as string[],
+    due: row.due,
+    done: row.done,
+    overdue_days: row.due ? daysBetween(row.due, now) : null,
+    updated_at: row.updated_at,
+  }));
+}
+
+function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
 }
 
 function snippet(plain: string, q: string, width = 160): string {
