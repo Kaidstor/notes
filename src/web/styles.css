@@ -115,6 +115,49 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Визуальный редактор (Milkdown Crepe): палитра — те же zinc/sky, поэтому светлая
+   тема переключается вместе с остальным интерфейсом. */
+.visual-editor .milkdown {
+  --crepe-color-background: var(--color-zinc-925);
+  --crepe-color-on-background: var(--color-zinc-100);
+  --crepe-color-surface: var(--color-zinc-950);
+  --crepe-color-surface-low: var(--color-zinc-900);
+  --crepe-color-on-surface: var(--color-zinc-200);
+  --crepe-color-on-surface-variant: var(--color-zinc-400);
+  --crepe-color-outline: var(--color-zinc-600);
+  --crepe-color-primary: var(--color-sky-400);
+  --crepe-color-secondary: var(--color-zinc-800);
+  --crepe-color-on-secondary: var(--color-zinc-100);
+  --crepe-color-inverse: var(--color-zinc-100);
+  --crepe-color-on-inverse: var(--color-zinc-950);
+  --crepe-color-inline-code: var(--color-amber-300);
+  --crepe-color-error: var(--color-red-400);
+  --crepe-color-hover: var(--color-zinc-900);
+  --crepe-color-selected: var(--color-zinc-800);
+  --crepe-color-inline-area: var(--color-zinc-900);
+
+  --crepe-base-font-size: 16px;
+  --crepe-font-title: var(--font-sans);
+  --crepe-font-default: var(--font-sans);
+  --crepe-font-code: var(--font-mono);
+
+  --crepe-shadow-1: 0 1px 3px rgb(0 0 0 / 0.3);
+  --crepe-shadow-2: 0 4px 16px rgb(0 0 0 / 0.35);
+
+  background: transparent;
+}
+.visual-editor .milkdown .ProseMirror {
+  padding: 28px 56px 40px;
+}
+.visual-editor .milkdown .ProseMirror img {
+  max-width: 100%;
+  border-radius: 10px;
+}
+.visual-editor .upload-widget {
+  color: var(--color-zinc-500);
+  font-size: 13px;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

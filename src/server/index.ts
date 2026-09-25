@@ -6,13 +6,15 @@ import { serveStatic } from 'hono/bun';
 import { getCookie, setCookie } from 'hono/cookie';
 import { logger } from 'hono/logger';
 
-import type { NoteOwner, ScheduleState, ShareRow } from './db.ts';
+import type { ImageRow, NoteOwner, ScheduleState, ShareRow } from './db.ts';
 import {
   SCHEDULE_TAG,
   countNotes,
   countStale,
+  createImage,
   createShare,
   deleteNote,
+  getImage,
   getNote,
   getShare,
   listNotes,
@@ -21,6 +23,7 @@ import {
   listTags,
   revokeShare,
   sweepExpiredShares,
+  sweepOrphanImages,
   today,
   upsertNote,
 } from './db.ts';
@@ -38,6 +41,16 @@ const COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 const SHARE_TTL_MIN = 60;
 const SHARE_TTL_MAX = 60 * 60 * 24 * 7;
+
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+// SVG сюда не входит: он исполняет скрипты, а отдаётся с нашего же origin.
+const IMAGE_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+};
 
 if (process.env.NODE_ENV === 'production' && !(ADMIN_TOKEN && READ_TOKEN)) {
   throw new Error('NOTES_ADMIN_TOKEN и NOTES_READ_TOKEN обязательны при NODE_ENV=production');
@@ -304,6 +317,47 @@ app.put('/api/notes/:uuid{[0-9a-fA-F-]{36}}', guardToken, async (c) => {
   return c.json({ uuid: note.uuid, title: note.title, updated_at: note.updated_at });
 });
 
+// --- картинки ------------------------------------------------------------------
+
+// Тело — сам файл, тип — в content-type: так грузят и редактор (fetch с File),
+// и curl (`--data-binary @shot.png`).
+app.post('/api/images', guardToken, async (c) => {
+  const mime = (c.req.header('content-type') ?? '').split(';')[0]!.trim().toLowerCase();
+  const ext = IMAGE_EXT[mime];
+  if (!ext) {
+    return c.json({ error: `картинка — одна из: ${Object.keys(IMAGE_EXT).join(', ')}` }, 415);
+  }
+  if (Number(c.req.header('content-length') ?? 0) > IMAGE_MAX_BYTES) {
+    return c.json({ error: 'картинка больше 10 МБ' }, 413);
+  }
+
+  const data = new Uint8Array(await c.req.arrayBuffer());
+  if (data.byteLength === 0) return c.json({ error: 'пустое тело' }, 400);
+  if (data.byteLength > IMAGE_MAX_BYTES) return c.json({ error: 'картинка больше 10 МБ' }, 413);
+
+  const image = createImage(mime, data, c.get('role'));
+  const path = `/img/${image.id}.${ext}`;
+
+  return c.json({ id: image.id, path, url: `${PUBLIC_URL}${path}`, size: image.size });
+});
+
+const IMAGE_FILE = '{[A-Za-z0-9_-]{22}\\.[a-z]{3,4}}';
+
+function imageResponse(c: Context<Env>, image: ImageRow | null) {
+  if (!image) return c.json({ error: 'не найдено' }, 404);
+
+  return c.body(image.data, 200, {
+    'content-type': image.mime,
+    'x-content-type-options': 'nosniff',
+    // id картинки не переиспользуется, поэтому содержимое по адресу не меняется.
+    'cache-control': 'private, max-age=31536000, immutable',
+  });
+}
+
+app.get(`/img/:file${IMAGE_FILE}`, guardToken, (c) =>
+  imageResponse(c, getImage(c.req.param('file').split('.')[0]!)),
+);
+
 // --- временные ссылки --------------------------------------------------------
 
 function shareJson(share: ShareRow) {
@@ -379,10 +433,21 @@ app.get('/s/:token{[A-Za-z0-9_-]{43}}', (c) => {
   if (!share || !note) return c.html(renderShareGone(SITE_NAME), 404, noStore);
 
   return c.html(
-    renderNotePage(note, SITE_NAME, { share: { expiresAt: share.expires_at } }),
+    renderNotePage(note, SITE_NAME, { share: { token: share.token, expiresAt: share.expires_at } }),
     200,
     noStore,
   );
+});
+
+// Картинка по временной ссылке: отдаём только упомянутые в этой заметке, иначе
+// одна живая ссылка открывала бы любую картинку сайта по её id.
+app.get(`/s/:token{[A-Za-z0-9_-]{43}}/img/:file${IMAGE_FILE}`, (c) => {
+  const share = getShare(c.req.param('token'));
+  const note = share && getNote(share.note_uuid);
+  const id = c.req.param('file').split('.')[0]!;
+
+  if (!note || !note.markdown.includes(`/img/${id}.`)) return c.json({ error: 'не найдено' }, 404);
+  return imageResponse(c, getImage(id));
 });
 
 // --- страницы заметок (оба токена) -------------------------------------------
@@ -409,6 +474,7 @@ app.use('/assets/*', serveStatic({ root: './dist/web' }));
 app.use('/fonts/*', serveStatic({ root: './dist/web' }));
 app.use('/favicon.svg', serveStatic({ root: './dist/web' }));
 app.get('/', guardToken, serveStatic({ path: './dist/web/index.html' }));
+app.get('/new', guardToken, serveStatic({ path: './dist/web/index.html' }));
 // Редактор — та же SPA, маршрут разбирает фронт по pathname. Гейт здесь только
 // на вход: правку по существу решает PUT, который сверяет владельца заметки.
 app.get(
@@ -418,8 +484,9 @@ app.get(
 );
 
 const swept = sweepExpiredShares();
+const sweptImages = sweepOrphanImages();
 console.log(
-  `[notes] ${SITE_NAME} → http://localhost:${PORT} (${countNotes()} заметок, снято истёкших ссылок: ${swept})`,
+  `[notes] ${SITE_NAME} → http://localhost:${PORT} (${countNotes()} заметок, снято истёкших ссылок: ${swept}, неиспользуемых картинок: ${sweptImages})`,
 );
 
 export default { port: PORT, fetch: app.fetch };

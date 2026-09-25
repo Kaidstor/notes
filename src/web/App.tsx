@@ -1,6 +1,6 @@
 import { Combobox } from '@base-ui/react/combobox';
 import clsx from 'clsx';
-import { Check, Pencil, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { Check, Pencil, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { changelogKey, markChangelogSeen, unseenChangelog } from './lib/changelog.ts';
@@ -152,6 +152,13 @@ export default function App() {
             </span>
           )}
           <span className="flex-1" />
+          <a
+            href="/new"
+            className="inline-flex items-center gap-1.5 rounded-full bg-sky-500/15 px-3 py-0.5 text-[12.5px] text-sky-300 transition-colors hover:bg-sky-500/25"
+          >
+            <Plus size={12} />
+            новая заметка
+          </a>
           <button
             type="button"
             onClick={() => setFresh([])}

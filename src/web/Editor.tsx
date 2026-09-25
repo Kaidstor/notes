@@ -1,5 +1,43 @@
 import clsx from 'clsx';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { ImagePlus } from 'lucide-react';
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+
+import { IMAGE_ACCEPT, imageAlt, imageFiles, uploadImage } from './lib/images.ts';
+import type { VisualHandle } from './VisualEditor.tsx';
+
+// Milkdown тянет ProseMirror и CodeMirror — грузим только тем, кто открыл «Вид».
+const VisualEditor = lazy(() => import('./VisualEditor.tsx'));
+
+type Mode = 'markdown' | 'visual';
+
+const MODE_KEY = 'notes.editorMode';
+
+const NEW_NOTE = '---\ntitle: \ntags: []\n---\n\n';
+
+function storedMode(): Mode {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'visual' ? 'visual' : 'markdown';
+  } catch {
+    return 'markdown';
+  }
+}
+
+/** Frontmatter вместе с закрывающим `---` и переводом строки после него. */
+function splitFrontmatter(source: string): { front: string; body: string } {
+  const match = /^---\r?\n[\s\S]*?\r?\n---(?:\r?\n|$)/.exec(source);
+  return match
+    ? { front: match[0], body: source.slice(match[0].length) }
+    : { front: '', body: source };
+}
 
 interface NotePayload {
   uuid: string;
@@ -18,24 +56,60 @@ const timeFmt = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-d
 // ширина глифа от начертания не меняется, точки переноса совпадают.
 const LAYER = 'px-4 py-3.5 font-mono text-[13px] leading-[1.7] whitespace-pre-wrap break-words';
 
-export default function Editor({ uuid }: { uuid: string }) {
+/** `initialUuid === null` — новая заметка: она появится на сервере при первом сохранении. */
+export default function Editor({ uuid: initialUuid }: { uuid: string | null }) {
+  const [uuid, setUuid] = useState(initialUuid);
   const [note, setNote] = useState<NotePayload | null>(null);
-  const [text, setText] = useState('');
-  const [savedText, setSavedText] = useState('');
+  const [text, setText] = useState(initialUuid ? '' : NEW_NOTE);
+  const [savedText, setSavedText] = useState(initialUuid ? '' : NEW_NOTE);
   const [loadError, setLoadError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [savedAt, setSavedAt] = useState('');
   const [removing, setRemoving] = useState(false);
+  const [uploading, setUploading] = useState(0);
+  const [mode, setMode] = useState<Mode>(storedMode);
+  // Снимок на момент входа в «Вид»: frontmatter правится отдельным полем, тело —
+  // визуальным редактором, который читает исходник только при создании.
+  const [visual, setVisual] = useState<{ key: number; front: string; body: string } | null>(null);
+  const visualBody = useRef('');
+  const visualRef = useRef<VisualHandle>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   // После удаления уходим на индекс мимо вопроса «покинуть страницу?»: заметки
   // уже нет, а состояние dirty до перехода обновиться не успеет.
   const leaving = useRef(false);
 
   const dirty = text !== savedText;
+  const ready = initialUuid === null || note !== null;
+
+  const openVisual = useCallback((source: string) => {
+    const { front, body } = splitFrontmatter(source);
+    visualBody.current = body;
+    setVisual((prev) => ({ key: (prev?.key ?? 0) + 1, front, body }));
+  }, []);
+
+  const switchMode = useCallback(
+    (next: Mode) => {
+      if (next === mode) return;
+      if (next === 'visual') openVisual(text);
+      setMode(next);
+      try {
+        localStorage.setItem(MODE_KEY, next);
+      } catch {
+        // приватный режим — выбор просто не запомнится
+      }
+    },
+    [mode, openVisual, text],
+  );
 
   useEffect(() => {
+    if (!initialUuid) {
+      if (storedMode() === 'visual') openVisual(NEW_NOTE);
+      return;
+    }
     const controller = new AbortController();
-    fetch(`/api/notes/${uuid}`, { signal: controller.signal })
+    fetch(`/api/notes/${initialUuid}`, { signal: controller.signal })
       .then(async (res) => {
         if (!res.ok) {
           throw new Error(res.status === 404 ? 'Такой заметки нет' : `HTTP ${res.status}`);
@@ -46,40 +120,92 @@ export default function Editor({ uuid }: { uuid: string }) {
         setNote(data);
         setText(data.markdown);
         setSavedText(data.markdown);
+        if (storedMode() === 'visual') openVisual(data.markdown);
       })
       .catch((err: unknown) => {
         if ((err as Error).name !== 'AbortError') setLoadError((err as Error).message);
       });
     return () => controller.abort();
-  }, [uuid]);
+  }, [initialUuid, openVisual]);
 
   useEffect(() => {
-    document.title = note ? `${note.title} · правка` : 'правка';
-  }, [note]);
+    document.title = note ? `${note.title} · правка` : uuid ? 'правка' : 'новая заметка';
+  }, [note, uuid]);
 
   const save = useCallback(async () => {
     if (!dirty || saving || removing) return;
     setSaving(true);
     setSaveError('');
     try {
-      const res = await fetch(`/api/notes/${uuid}`, {
-        method: 'PUT',
+      const res = await fetch(uuid ? `/api/notes/${uuid}` : '/api/notes', {
+        method: uuid ? 'PUT' : 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ markdown: text }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { title: string; updated_at: string };
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${res.status}`);
+      }
+      const data = (await res.json()) as {
+        uuid: string;
+        title: string;
+        created_at?: string;
+        updated_at: string;
+      };
       setSavedText(text);
       setSavedAt(timeFmt.format(new Date()));
-      setNote((prev) =>
-        prev ? { ...prev, title: data.title, updated_at: data.updated_at } : prev,
-      );
+      if (uuid) {
+        setNote((prev) =>
+          prev ? { ...prev, title: data.title, updated_at: data.updated_at } : prev,
+        );
+      } else {
+        // Адрес меняем без перехода: перезагрузка сбросила бы курсор и историю правок.
+        history.replaceState(null, '', `/${data.uuid}/edit`);
+        setUuid(data.uuid);
+        setNote({
+          uuid: data.uuid,
+          title: data.title,
+          markdown: text,
+          tags: [],
+          created_at: data.created_at ?? data.updated_at,
+          updated_at: data.updated_at,
+        });
+      }
     } catch (err) {
       setSaveError((err as Error).message);
     } finally {
       setSaving(false);
     }
   }, [dirty, saving, removing, text, uuid]);
+
+  const insertImages = useCallback(
+    async (files: File[]) => {
+      if (!files.length) return;
+      setUploading((n) => n + files.length);
+      setSaveError('');
+      try {
+        const images = await Promise.all(
+          files.map(async (file) => ({ src: await uploadImage(file), alt: imageAlt(file) })),
+        );
+        if (mode === 'visual') {
+          for (const { src, alt } of images) visualRef.current?.insertImage(src, alt);
+        } else {
+          // Курсор textarea переживает потерю фокуса: картинка встанет туда, где он был.
+          textareaRef.current?.focus();
+          document.execCommand(
+            'insertText',
+            false,
+            images.map(({ src, alt }) => `![${alt}](${src})`).join('\n'),
+          );
+        }
+      } catch (err) {
+        setSaveError((err as Error).message);
+      } finally {
+        setUploading((n) => n - files.length);
+      }
+    },
+    [mode],
+  );
 
   useEffect(() => {
     // e.code, а не e.key: на русской раскладке Cmd+S приходит как «ы».
@@ -123,7 +249,7 @@ export default function Editor({ uuid }: { uuid: string }) {
     return () => window.removeEventListener('beforeunload', onUnload);
   }, [dirty]);
 
-  const highlighted = useMemo(() => highlight(text), [text]);
+  const highlighted = useMemo(() => (mode === 'markdown' ? highlight(text) : null), [mode, text]);
 
   if (loadError) {
     return (
@@ -144,37 +270,84 @@ export default function Editor({ uuid }: { uuid: string }) {
       <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/85 backdrop-blur">
         <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 py-2.5">
           <a
-            href={`/${uuid}`}
-            title="К странице заметки"
+            href={uuid ? `/${uuid}` : '/'}
+            title={uuid ? 'К странице заметки' : 'К списку заметок'}
             className="shrink-0 font-mono text-[12px] text-zinc-500 hover:text-zinc-200"
           >
-            ← заметка
+            {uuid ? '← заметка' : '← список'}
           </a>
           <span className="min-w-0 flex-1 truncate text-[12.5px] text-zinc-300">
-            {note?.title ?? '…'}
+            {note?.title ?? (uuid ? '…' : 'Новая заметка')}
           </span>
           <span
             className={clsx(
               'shrink-0 font-mono text-[11px]',
-              saveError ? 'text-red-400' : dirty ? 'text-amber-400' : 'text-zinc-600',
+              saveError ? 'text-red-400' : dirty || uploading ? 'text-amber-400' : 'text-zinc-600',
             )}
           >
             {saveError
               ? `ошибка: ${saveError}`
-              : dirty
-                ? 'изменено'
-                : savedAt
-                  ? `сохранено ${savedAt}`
-                  : ''}
+              : uploading
+                ? 'загружаю картинку…'
+                : dirty
+                  ? 'изменено'
+                  : savedAt
+                    ? `сохранено ${savedAt}`
+                    : ''}
           </span>
+          <div className="flex shrink-0 rounded-md border border-zinc-800 p-0.5 text-[12px]">
+            {(
+              [
+                ['markdown', 'Markdown'],
+                ['visual', 'Вид'],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => switchMode(value)}
+                aria-pressed={mode === value}
+                disabled={!ready}
+                className={clsx(
+                  'rounded px-2 py-0.5 transition-colors',
+                  mode === value ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-500 hover:text-zinc-200',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <button
             type="button"
-            onClick={() => void remove()}
-            disabled={!note || saving || removing}
-            className="shrink-0 rounded-md border border-zinc-800 px-3 py-1 text-[12px] text-zinc-500 transition-colors hover:border-red-900 hover:text-red-400 disabled:cursor-default disabled:text-zinc-700 disabled:hover:border-zinc-800"
+            onClick={() => fileRef.current?.click()}
+            disabled={!ready}
+            title="Вставить картинку. Ещё можно вставить из буфера (⌘V) или перетащить файл"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-zinc-800 px-2.5 py-1 text-[12px] text-zinc-400 transition-colors hover:border-zinc-600 hover:text-zinc-100 disabled:cursor-default disabled:text-zinc-700"
           >
-            {removing ? 'Удаляю…' : 'Удалить'}
+            <ImagePlus size={13} />
+            Фото
           </button>
+          <input
+            ref={fileRef}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => {
+              void insertImages(imageFiles(e.target.files));
+              e.target.value = '';
+            }}
+          />
+          {uuid && (
+            <button
+              type="button"
+              onClick={() => void remove()}
+              disabled={!note || saving || removing}
+              className="shrink-0 rounded-md border border-zinc-800 px-3 py-1 text-[12px] text-zinc-500 transition-colors hover:border-red-900 hover:text-red-400 disabled:cursor-default disabled:text-zinc-700 disabled:hover:border-zinc-800"
+            >
+              {removing ? 'Удаляю…' : 'Удалить'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void save()}
@@ -188,37 +361,94 @@ export default function Editor({ uuid }: { uuid: string }) {
 
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-6 py-6">
-          <div className="relative rounded-lg border border-zinc-800 bg-zinc-925 transition-colors focus-within:border-sky-600">
-            <pre aria-hidden className={clsx(LAYER, 'pointer-events-none min-h-[75vh] text-zinc-300')}>
-              {highlighted}
-            </pre>
-            <textarea
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                // Tab печатает отступ; вставка через execCommand, чтобы не сломать Cmd+Z.
-                if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
-                  e.preventDefault();
-                  document.execCommand('insertText', false, '  ');
-                }
-              }}
-              disabled={!note}
-              spellCheck={false}
-              autoComplete="off"
-              autoCapitalize="off"
-              autoCorrect="off"
-              autoFocus
-              aria-label="Markdown заметки"
-              className={clsx(
-                LAYER,
-                'absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent text-transparent caret-sky-400 selection:bg-sky-500/25 focus:outline-none',
+          {mode === 'visual' ? (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-925 transition-colors focus-within:border-sky-600">
+              {visual?.front && (
+                <textarea
+                  value={visual.front}
+                  onChange={(e) => {
+                    const front = e.target.value;
+                    setVisual((prev) => (prev ? { ...prev, front } : prev));
+                    setText(front + visualBody.current);
+                  }}
+                  rows={visual.front.trimEnd().split('\n').length}
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-label="Frontmatter заметки"
+                  className="block w-full resize-none border-b border-zinc-800 bg-transparent px-4 py-3 font-mono text-[12px] leading-[1.7] text-zinc-400 focus:outline-none"
+                />
               )}
-            />
-          </div>
+              {visual && (
+                <Suspense
+                  fallback={<div className="px-4 py-3.5 text-[13px] text-zinc-500">загружаю редактор…</div>}
+                >
+                  <VisualEditor
+                    key={visual.key}
+                    ref={visualRef}
+                    initial={visual.body}
+                    onChange={(body) => {
+                      visualBody.current = body;
+                      setText(visual.front + body);
+                    }}
+                    onError={setSaveError}
+                  />
+                </Suspense>
+              )}
+            </div>
+          ) : (
+            <div className="relative rounded-lg border border-zinc-800 bg-zinc-925 transition-colors focus-within:border-sky-600">
+              <pre aria-hidden className={clsx(LAYER, 'pointer-events-none min-h-[75vh] text-zinc-300')}>
+                {highlighted}
+              </pre>
+              <textarea
+                ref={textareaRef}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  // Tab печатает отступ; вставка через execCommand, чтобы не сломать Cmd+Z.
+                  if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+                    e.preventDefault();
+                    document.execCommand('insertText', false, '  ');
+                  }
+                }}
+                onPaste={(e) => {
+                  // Word и Pages кладут в буфер рядом с текстом его картинку-превью:
+                  // если текст есть, вставляем текст.
+                  if (e.clipboardData.types.includes('text/plain')) return;
+                  const files = imageFiles(e.clipboardData.files);
+                  if (!files.length) return;
+                  e.preventDefault();
+                  void insertImages(files);
+                }}
+                onDragOver={(e) => {
+                  if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+                }}
+                onDrop={(e) => {
+                  const files = imageFiles(e.dataTransfer.files);
+                  if (!files.length) return;
+                  e.preventDefault();
+                  void insertImages(files);
+                }}
+                disabled={!ready}
+                spellCheck={false}
+                autoComplete="off"
+                autoCapitalize="off"
+                autoCorrect="off"
+                autoFocus
+                aria-label="Markdown заметки"
+                className={clsx(
+                  LAYER,
+                  'absolute inset-0 h-full w-full resize-none overflow-hidden bg-transparent text-transparent caret-sky-400 selection:bg-sky-500/25 focus:outline-none',
+                )}
+              />
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-2 pt-2 font-mono text-[10.5px] text-zinc-600">
             <span>⌘S — сохранить</span>
             <span>·</span>
-            <span>{uuid}</span>
+            <span>картинки — ⌘V или перетащить</span>
+            <span>·</span>
+            <span>{uuid ?? 'появится после сохранения'}</span>
             {note && note.tags.length > 0 && (
               <>
                 <span>·</span>
