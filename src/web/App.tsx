@@ -4,7 +4,6 @@ import { Check, Pencil, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { changelogKey, markChangelogSeen, unseenChangelog } from './lib/changelog.ts';
-import { applyTheme, currentTheme, THEMES } from './lib/themes.ts';
 import { WhatsNew } from './WhatsNew.tsx';
 
 interface Note {
@@ -51,7 +50,6 @@ export default function App() {
     notes: [],
   });
   const [loading, setLoading] = useState(true);
-  const [theme, setTheme] = useState(currentTheme);
   const [fresh, setFresh] = useState<string[] | null>(null);
   const [error, setError] = useState('');
   const [generation, setGeneration] = useState(0);
@@ -140,20 +138,15 @@ export default function App() {
     setFresh(null);
   }, []);
 
-  const pickTheme = (id: string) => {
-    applyTheme(id);
-    setTheme(id);
-  };
-
   return (
     <div className="flex h-full flex-col bg-zinc-950">
-      <header className="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/85 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 py-2.5">
-          <span className="font-mono text-[12px] text-zinc-500">{data.site}</span>
+      <header className="sticky top-0 z-10 bg-zinc-950/80 backdrop-blur-[14px]">
+        <div className="mx-auto flex w-full max-w-[860px] items-center gap-2.5 px-6 py-2.5">
+          <span className="text-[13.5px] text-zinc-500">{data.site}</span>
           {data.role === 'read' && (
             <span
               title="Вход по токену публикации: в списке — только заметки, опубликованные им"
-              className="rounded border border-zinc-800 bg-zinc-900 px-1.5 py-px font-mono text-[10px] text-zinc-500"
+              className="rounded-full bg-zinc-925 px-2.5 py-0.5 text-[12px] text-zinc-400"
             >
               read
             </span>
@@ -162,38 +155,55 @@ export default function App() {
           <button
             type="button"
             onClick={() => setFresh([])}
-            title="Что нового"
-            aria-label="Что нового"
-            className="rounded p-1 text-zinc-600 transition-colors hover:text-zinc-200"
+            className="inline-flex items-center gap-1.5 rounded-full bg-zinc-925 px-3 py-0.5 text-[12.5px] text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
           >
-            <Sparkles size={13} />
+            <Sparkles size={12} />
+            что нового
           </button>
-          <div className="flex items-center gap-0.5 rounded-md border border-zinc-800 p-0.5">
-            {THEMES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => pickTheme(t.id)}
-                className={clsx(
-                  'rounded px-2 py-0.5 text-[11px] transition-colors',
-                  theme === t.id
-                    ? 'bg-zinc-800 text-zinc-100'
-                    : 'text-zinc-500 hover:text-zinc-300',
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-8">
+        <div className="mx-auto w-full max-w-[860px] px-6 pt-12 pb-24">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2 pb-6">
+            <h1 className="text-[32px] leading-tight font-medium tracking-[-0.025em] text-zinc-100">
+              {query || picked.length ? 'Найдено' : data.role === 'read' ? 'Мои заметки' : 'Заметки'}
+            </h1>
+            <span className="text-[14px] text-zinc-500 tabular-nums">
+              {data.notes.length}
+              {(query || picked.length > 0) && data.total !== data.notes.length && (
+                <span className="text-zinc-600"> из {data.total}</span>
+              )}
+              {loading && <span className="text-zinc-600"> …</span>}
+            </span>
+            <span className="flex-1" />
+            {(data.staleCount > 0 || showStale) && (
+              <button
+                type="button"
+                onClick={() => setShowStale((v) => !v)}
+                aria-pressed={showStale}
+                title={
+                  showStale
+                    ? 'Скрыть заметки, срок которых по stale_after прошёл'
+                    : 'Показать заметки, срок которых по stale_after прошёл'
+                }
+                className={clsx(
+                  'self-center rounded-full px-3 py-0.5 text-[12.5px] transition-colors',
+                  showStale
+                    ? 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                    : 'bg-zinc-925 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100',
+                )}
+              >
+                устаревшие
+                <span className="pl-1.5 text-zinc-500 tabular-nums">{data.staleCount}</span>
+              </button>
+            )}
+          </div>
+
           <div className="relative">
             <Search
-              size={13}
-              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-zinc-600"
+              size={14}
+              className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-zinc-500"
             />
             <input
               ref={inputRef}
@@ -202,38 +212,39 @@ export default function App() {
               placeholder="Поиск по заметкам"
               spellCheck={false}
               autoComplete="off"
-              className="w-full rounded-md border border-zinc-700 bg-zinc-900 py-1.5 pr-16 pl-7.5 text-[13px] text-zinc-100 placeholder:text-zinc-600 focus:border-sky-600 focus:outline-none"
+              className="w-full rounded-full border border-zinc-800 bg-zinc-925 py-2 pr-16 pl-10 text-[14px] text-zinc-100 transition-colors placeholder:text-zinc-500 focus:border-zinc-700 focus:outline-none"
             />
             {query ? (
               <button
                 type="button"
                 onClick={() => setQuery('')}
-                className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5 text-zinc-600 hover:text-zinc-300"
+                aria-label="Очистить поиск"
+                className="absolute top-1/2 right-2.5 -translate-y-1/2 rounded-full p-1 text-zinc-500 hover:bg-zinc-900 hover:text-zinc-100"
               >
                 <X size={13} />
               </button>
             ) : (
-              <kbd className="absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[10px] text-zinc-600">
+              <kbd className="absolute top-1/2 right-3 -translate-y-1/2 rounded-md border border-b-2 border-zinc-700 bg-zinc-900 px-1.5 text-[11px] text-zinc-400">
                 ⌘K
               </kbd>
             )}
           </div>
 
           {data.role === 'read' && (
-            <p className="pt-2.5 text-[11.5px] leading-relaxed text-zinc-500">
+            <p className="px-1 pt-3 text-[13px] leading-relaxed text-zinc-500">
               Токен публикации принят: он открывает любую заметку по ссылке, а здесь
               показывает опубликованное им. Весь список заметок — под полным токеном.
             </p>
           )}
 
           {error && (
-            <p className="flex items-center gap-2 pt-2.5 text-[11.5px] text-red-400">
+            <p className="mt-3 flex items-center gap-2 rounded-[14px] bg-red-400/10 px-4 py-2.5 text-[13px] text-red-400">
               <span className="flex-1">Не удалилось: {error}</span>
               <button
                 type="button"
                 onClick={() => setError('')}
                 aria-label="Скрыть ошибку"
-                className="rounded p-0.5 text-red-400/70 hover:text-red-300"
+                className="rounded-full p-1 text-red-400/70 hover:bg-red-400/15 hover:text-red-300"
               >
                 <X size={12} />
               </button>
@@ -249,41 +260,8 @@ export default function App() {
             />
           )}
 
-          <div className="flex items-center gap-1.5 pt-6 pb-3 text-[11px] font-semibold tracking-wider text-zinc-500">
-            <span>
-              {query || picked.length ? 'НАЙДЕНО' : data.role === 'read' ? 'МОИ ЗАМЕТКИ' : 'ЗАМЕТКИ'}
-            </span>
-            <span className="text-zinc-600">· {data.notes.length}</span>
-            {(query || picked.length > 0) && data.total !== data.notes.length && (
-              <span className="text-zinc-700">из {data.total}</span>
-            )}
-            {loading && <span className="text-zinc-700">…</span>}
-            <span className="flex-1" />
-            {(data.staleCount > 0 || showStale) && (
-              <button
-                type="button"
-                onClick={() => setShowStale((v) => !v)}
-                aria-pressed={showStale}
-                title={
-                  showStale
-                    ? 'Скрыть заметки, срок которых по stale_after прошёл'
-                    : 'Показать заметки, срок которых по stale_after прошёл'
-                }
-                className={clsx(
-                  'rounded border px-1.5 py-px font-mono text-[10.5px] font-normal tracking-normal transition-colors',
-                  showStale
-                    ? 'border-sky-700 bg-sky-500/15 text-sky-300'
-                    : 'border-zinc-800 bg-zinc-900 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
-                )}
-              >
-                устаревшие
-                <span className="pl-1 text-zinc-600">{data.staleCount}</span>
-              </button>
-            )}
-          </div>
-
           {data.notes.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-zinc-800 py-12 text-center text-[12px] text-zinc-600">
+            <div className="mt-8 rounded-[14px] bg-zinc-925 py-14 text-center text-[14px] text-zinc-500">
               {query || picked.length
                 ? 'Ничего не нашлось'
                 : data.role === 'read'
@@ -291,7 +269,7 @@ export default function App() {
                   : 'Пока ни одной заметки'}
             </div>
           ) : (
-            <div className="flex flex-col gap-2">
+            <div className="mt-8 flex flex-col gap-2.5">
               {data.notes.map((note) => (
                 <NoteCard
                   key={note.uuid}
@@ -330,50 +308,49 @@ function NoteCard({
     // остаётся кликабельной целиком, но тег не утаскивает на страницу заметки.
     <div
       className={clsx(
-        'group relative rounded-lg border border-zinc-800 bg-zinc-925 px-3.5 py-3 transition-[border-color,opacity] hover:border-zinc-600',
+        'group relative rounded-[14px] bg-zinc-925 px-[18px] py-4 transition-[background-color,opacity] hover:bg-zinc-900',
         note.stale && 'opacity-55 hover:opacity-100',
       )}
     >
-      <a href={`/${note.uuid}`} className="absolute inset-0 rounded-lg" aria-label={note.title} />
-      <div className="flex items-baseline gap-2">
-        <span className="min-w-0 flex-1 truncate text-[13px] text-zinc-100">{note.title}</span>
+      <a href={`/${note.uuid}`} className="absolute inset-0 rounded-[14px]" aria-label={note.title} />
+      <div className="flex items-baseline gap-2.5">
+        <span className="min-w-0 flex-1 truncate text-[16px] font-medium tracking-[-0.01em] text-zinc-100">
+          {note.title}
+        </span>
         <a
           href={`/${note.uuid}/edit`}
           title="Править"
           aria-label={`Править «${note.title}»`}
-          className="relative z-10 shrink-0 self-center rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-zinc-200 focus-visible:opacity-100"
+          className="relative z-10 shrink-0 self-center rounded-full p-1 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-zinc-800 hover:text-zinc-100 focus-visible:opacity-100"
         >
-          <Pencil size={12} />
+          <Pencil size={13} />
         </a>
         <button
           type="button"
           onClick={() => onDelete(note)}
           title="Удалить"
           aria-label={`Удалить «${note.title}»`}
-          className="relative z-10 shrink-0 self-center rounded p-0.5 text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100 hover:text-red-400 focus-visible:opacity-100"
+          className="relative z-10 shrink-0 self-center rounded-full p-1 text-zinc-500 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-400/15 hover:text-red-400 focus-visible:opacity-100"
         >
-          <Trash2 size={12} />
+          <Trash2 size={13} />
         </button>
         {note.stale && note.stale_after && (
-          <span className="shrink-0 rounded border border-amber-800/60 bg-amber-500/10 px-1.5 py-px font-mono text-[10px] text-amber-400/90">
+          <span className="shrink-0 self-center rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[12px] text-amber-400">
             устарела {dateFmt.format(new Date(`${note.stale_after}T00:00:00`))}
           </span>
         )}
-        <span className="shrink-0 font-mono text-[11px] text-zinc-600">
+        <span className="shrink-0 text-[13px] text-zinc-500 tabular-nums">
           {dateFmt.format(new Date(note.updated_at))}
         </span>
       </div>
 
       {note.snippet && (
-        <p className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-zinc-400">
+        <p className="mt-1.5 line-clamp-2 text-[14px] leading-relaxed text-zinc-400">
           <Highlight text={note.snippet} query={query} />
         </p>
       )}
 
-      <div className="mt-1.5 flex items-center gap-1.5">
-        <span className="truncate font-mono text-[10.5px] text-zinc-600 group-hover:text-zinc-500">
-          {note.uuid}
-        </span>
+      <div className="mt-3 flex items-center gap-1.5">
         {note.tags.map((tag) => (
           <button
             key={tag}
@@ -382,15 +359,18 @@ function NoteCard({
             aria-pressed={picked.includes(tag)}
             title={picked.includes(tag) ? `Убрать фильтр «${tag}»` : `Отобрать по тегу «${tag}»`}
             className={clsx(
-              'relative z-10 shrink-0 rounded border px-1.5 py-px text-[10px] transition-colors',
+              'relative z-10 shrink-0 rounded-full px-2.5 py-0.5 text-[12px] transition-colors',
               picked.includes(tag)
-                ? 'border-sky-700 bg-sky-500/15 text-sky-300'
-                : 'border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-zinc-600 hover:text-zinc-200',
+                ? 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                : 'bg-zinc-900 text-zinc-400 group-hover:bg-zinc-800 hover:text-zinc-100',
             )}
           >
             {tag}
           </button>
         ))}
+        <span className="min-w-0 truncate pl-1 font-mono text-[11px] text-zinc-600 group-hover:text-zinc-500">
+          {note.uuid}
+        </span>
       </div>
     </div>
   );
@@ -413,8 +393,8 @@ function TagPicker({
   const counts = useMemo(() => new Map(tags.map((t) => [t.tag, t.count])), [tags]);
 
   return (
-    <div className="flex flex-col gap-1.5 pt-3">
-      <div className="flex flex-wrap items-center gap-1">
+    <div className="flex flex-col gap-2.5 pt-3">
+      <div className="flex flex-wrap items-center gap-1.5">
         {tags.slice(0, QUICK_TAGS).map(({ tag, count }) => (
           <button
             key={tag}
@@ -422,21 +402,21 @@ function TagPicker({
             onClick={() => onToggle(tag)}
             aria-pressed={picked.includes(tag)}
             className={clsx(
-              'rounded border px-1.5 py-px font-mono text-[10.5px] transition-colors',
+              'rounded-full px-2.5 py-0.5 text-[12.5px] transition-colors',
               picked.includes(tag)
-                ? 'border-sky-700 bg-sky-500/15 text-sky-300'
-                : 'border-zinc-800 bg-zinc-900 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
+                ? 'bg-sky-500/15 text-sky-300 hover:bg-sky-500/25'
+                : 'bg-zinc-925 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100',
             )}
           >
             {tag}
-            <span className="pl-1 text-zinc-600">{count}</span>
+            <span className="pl-1.5 text-zinc-500 tabular-nums">{count}</span>
           </button>
         ))}
         {picked.length > 0 && (
           <button
             type="button"
             onClick={() => onChange([])}
-            className="px-1.5 py-px text-[10.5px] text-zinc-600 hover:text-zinc-300"
+            className="rounded-full px-2.5 py-0.5 text-[12.5px] text-zinc-500 hover:bg-zinc-925 hover:text-zinc-100"
           >
             сбросить
           </button>
@@ -450,7 +430,7 @@ function TagPicker({
         onValueChange={(value: string[]) => onChange(value)}
         autoHighlight
       >
-        <Combobox.InputGroup className="flex min-h-[30px] cursor-text flex-wrap items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1 focus-within:border-sky-600">
+        <Combobox.InputGroup className="flex min-h-[38px] cursor-text flex-wrap items-center gap-1 rounded-[19px] border border-zinc-800 bg-zinc-925 px-2 py-1.5 transition-colors focus-within:border-zinc-700">
           <Combobox.Value>
             {(value: string[]) => (
               <Combobox.Chips className="flex w-full flex-wrap items-center gap-1">
@@ -458,21 +438,21 @@ function TagPicker({
                   <Combobox.Chip
                     key={tag}
                     aria-label={tag}
-                    className="flex items-center gap-0.5 rounded border border-sky-700 bg-sky-500/15 py-px pr-0.5 pl-1.5 font-mono text-[10.5px] text-sky-300 outline-none focus-within:border-sky-500 data-highlighted:border-sky-500"
+                    className="flex items-center gap-0.5 rounded-full bg-sky-500/15 py-0.5 pr-1 pl-2.5 text-[12px] text-sky-300 outline-none data-highlighted:bg-sky-500/30"
                   >
                     {tag}
                     <Combobox.ChipRemove
                       aria-label={`Убрать тег «${tag}»`}
-                      className="rounded p-px text-sky-400/70 hover:bg-sky-500/20 hover:text-sky-200"
+                      className="rounded-full p-0.5 text-sky-400/70 hover:bg-sky-500/20 hover:text-sky-200"
                     >
-                      <X size={10} />
+                      <X size={11} />
                     </Combobox.ChipRemove>
                   </Combobox.Chip>
                 ))}
                 <Combobox.Input
-                  placeholder={value.length ? '' : 'теги…'}
+                  placeholder={value.length ? '' : 'Теги…'}
                   spellCheck={false}
-                  className="h-5 min-w-16 flex-1 border-0 bg-transparent p-0 text-[12px] text-zinc-100 outline-none placeholder:text-zinc-600"
+                  className="h-6 min-w-16 flex-1 border-0 bg-transparent px-2 py-0 text-[14px] text-zinc-100 outline-none placeholder:text-zinc-500"
                 />
               </Combobox.Chips>
             )}
@@ -480,23 +460,23 @@ function TagPicker({
         </Combobox.InputGroup>
 
         <Combobox.Portal>
-          <Combobox.Positioner sideOffset={4} className="z-50 outline-none">
-            <Combobox.Popup className="max-h-[min(var(--available-height),18rem)] w-(--anchor-width) max-w-(--available-width) overflow-y-auto overscroll-contain rounded-md border border-zinc-700 bg-zinc-900 py-1 shadow-lg shadow-black/40">
+          <Combobox.Positioner sideOffset={6} className="z-50 outline-none">
+            <Combobox.Popup className="max-h-[min(var(--available-height),18rem)] w-(--anchor-width) max-w-(--available-width) overflow-y-auto overscroll-contain rounded-[14px] bg-zinc-925 p-1.5 shadow-xl shadow-black/30 ring-1 ring-zinc-800">
               <Combobox.Empty>
-                <div className="px-2.5 py-1.5 text-[12px] text-zinc-600">Такого тега нет</div>
+                <div className="px-3 py-1.5 text-[13px] text-zinc-500">Такого тега нет</div>
               </Combobox.Empty>
               <Combobox.List>
                 {(tag: string) => (
                   <Combobox.Item
                     key={tag}
                     value={tag}
-                    className="grid cursor-default grid-cols-[12px_1fr_auto] items-center gap-2 px-2.5 py-1 font-mono text-[11.5px] text-zinc-300 outline-none select-none data-highlighted:bg-zinc-800 data-highlighted:text-zinc-100 data-selected:text-sky-300"
+                    className="grid cursor-default grid-cols-[14px_1fr_auto] items-center gap-2 rounded-lg px-2.5 py-1.5 text-[13.5px] text-zinc-300 outline-none select-none data-highlighted:bg-zinc-900 data-highlighted:text-zinc-100 data-selected:text-sky-300"
                   >
                     <Combobox.ItemIndicator className="col-start-1">
-                      <Check size={11} />
+                      <Check size={12} />
                     </Combobox.ItemIndicator>
                     <span className="col-start-2 truncate">{tag}</span>
-                    <span className="col-start-3 text-[10.5px] text-zinc-600">{counts.get(tag)}</span>
+                    <span className="col-start-3 text-[12px] text-zinc-500 tabular-nums">{counts.get(tag)}</span>
                   </Combobox.Item>
                 )}
               </Combobox.List>
