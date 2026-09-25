@@ -40,9 +40,9 @@ const USAGE = `notes-kai — заметки на notes.kaidstor.ru и отлож
   unshare <token>                отозвать ссылку раньше срока
 
 Задачи:
-  due [--tag T]                  задачи, которые пора делать: due ≤ сегодня, не выполнены
-  tasks [--done | --all] [--tag T]
-                                 открытые задачи по сроку; --done выполненные, --all все
+  due [--open | --done | --all] [--tag T]
+                                 задачи, которые пора делать: due ≤ сегодня, не выполнены;
+                                 --open все невыполненные, --done выполненные, --all все
   add <файл.md | -> --due <дата> [--tags a,b]
                                  завести задачу: due и тег ${TAG} дописываются во frontmatter;
                                  uuid во frontmatter файла — обновить ту же задачу
@@ -50,6 +50,7 @@ const USAGE = `notes-kai — заметки на notes.kaidstor.ru и отлож
                                  без --result текст читается из stdin
   snooze <uuid> <дата>           перенести срок
   reopen <uuid>                  снять отметку о выполнении
+  Задача — обычная заметка: читать её get, удалять delete.
 
 Служебное:
   doctor                         токен, сервер, число открытых задач
@@ -114,7 +115,7 @@ interface Args {
 }
 
 const VALUE_FLAGS = new Set(['--tag', '--tags', '--due', '--result', '--host', '--uuid', '--title', '--ttl']);
-const BOOL_FLAGS = new Set(['--human', '--json', '--done', '--all', '--pin', '--local', '-h', '--help']);
+const BOOL_FLAGS = new Set(['--human', '--json', '--open', '--done', '--all', '--pin', '--local', '-h', '--help']);
 
 const GLOBAL_FLAGS = new Set(['--human', '--json', '--host', '--local', '-h', '--help']);
 const COMMAND_FLAGS: Record<string, string[]> = {
@@ -125,8 +126,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   share: ['--ttl'],
   shares: [],
   unshare: [],
-  due: ['--tag'],
-  tasks: ['--done', '--all', '--tag'],
+  due: ['--open', '--done', '--all', '--tag'],
   add: ['--due', '--tags'],
   done: ['--result'],
   snooze: [],
@@ -431,10 +431,14 @@ function readStdin(): string {
 
 // --- задачи: сохранение и проверка ---------------------------------------------
 
-/** PUT и проверка, что сервер разобрал поля так, как их записали. */
-async function saveNote(uuid: string, markdown: string, expect: Partial<Pick<Task, 'due' | 'done'>>): Promise<Task> {
-  await api('PUT', `/api/notes/${uuid}`, { markdown });
-  return verify(uuid, expect);
+/** Публикация по uuid и проверка, что сервер разобрал поля так, как их записали. */
+async function saveTask(note: NoteJson, markdown: string, expect: Partial<Pick<Task, 'due' | 'done'>>): Promise<Task> {
+  // POST без ключа tags во frontmatter обнуляет теги заметки (PUT редактора сохранял
+  // прежние), и задача, получившая тег параметром, молча выпала бы из очереди.
+  if (getKey(markdown, 'tags') === undefined && note.tags.length) markdown = addTags(markdown, note.tags);
+
+  await publishNote({ markdown, uuid: note.uuid });
+  return verify(note.uuid, expect);
 }
 
 async function verify(uuid: string, expect: Partial<Pick<Task, 'due' | 'done'>>): Promise<Task> {
@@ -579,7 +583,7 @@ async function add(args: Args): Promise<never> {
   markdown = addTags(setKey(markdown, 'due', due), [...tagList(str(args, '--tags')), TAG]);
   markdown = setKey(markdown, 'done', null);
 
-  const note = await api<{ uuid: string; title: string; url: string }>('POST', '/api/notes', { markdown });
+  const note = await publishNote({ markdown });
   const task = await verify(note.uuid, { due, done: null });
 
   return result(EXIT.ok, task, () => {
@@ -604,7 +608,7 @@ async function done(args: Args): Promise<never> {
   if (!stale || stale > date) markdown = setKey(markdown, 'stale_after', date);
   markdown = `${markdown.replace(/\s*$/, '')}\n\n## Результат ${date}\n\n${text}\n`;
 
-  const task = await saveNote(uuid, markdown, { done: date });
+  const task = await saveTask(note, markdown, { done: date });
   return result(EXIT.ok, task, () => console.log(`выполнена: ${task.title}`));
 }
 
@@ -615,7 +619,7 @@ async function snooze(args: Args): Promise<never> {
   const note = await readNote(uuid);
   if (getKey(note.markdown, 'done')) warnings.push('задача выполнена: срок сменён, в очередь она вернётся только после reopen');
 
-  const task = await saveNote(uuid, setKey(note.markdown, 'due', due), { due });
+  const task = await saveTask(note, setKey(note.markdown, 'due', due), { due });
   return result(EXIT.ok, task, () => console.log(`срок ${task.due}: ${task.title}`));
 }
 
@@ -629,7 +633,7 @@ async function reopen(args: Args): Promise<never> {
   let markdown = setKey(note.markdown, 'done', null);
   if (getKey(markdown, 'stale_after') === doneAt) markdown = setKey(markdown, 'stale_after', null);
 
-  const task = await saveNote(uuid, markdown, { done: null });
+  const task = await saveTask(note, markdown, { done: null });
   return result(EXIT.ok, task, () => console.log(`снова открыта: ${task.title}, срок ${task.due ?? '—'}`));
 }
 
@@ -672,6 +676,7 @@ async function main(): Promise<never> {
     process.exit(command || args.flags.size ? EXIT.ok : EXIT.tool);
   }
 
+  if (command === 'tasks') throw new CliError('usage', 'команды tasks больше нет: due --open, due --done или due --all');
   const allowed = COMMAND_FLAGS[command];
   if (!allowed) throw new CliError('usage', `неизвестная команда «${command}», см. notes-kai --help`);
   for (const flag of args.flags.keys()) {
@@ -695,10 +700,11 @@ async function main(): Promise<never> {
       return shares(args);
     case 'unshare':
       return unshare(args);
-    case 'due':
-      return schedule(args, 'due');
-    case 'tasks':
-      return schedule(args, args.flags.has('--all') ? 'all' : args.flags.has('--done') ? 'done' : 'open');
+    case 'due': {
+      const states = (['open', 'done', 'all'] as const).filter((s) => args.flags.has(`--${s}`));
+      if (states.length > 1) throw new CliError('usage', `--open, --done и --all взаимоисключающие, передано: ${states.join(', ')}`);
+      return schedule(args, states[0] ?? 'due');
+    }
     case 'add':
       return add(args);
     case 'done':
