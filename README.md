@@ -140,7 +140,9 @@ notes-kai --help
 | `snooze <uuid> <дата>` | Новый `due` |
 | `reopen <uuid>` | Снимает `done` (и `stale_after`, если его поставил `done`) |
 
-Служебные: `doctor` (сервер, источник токена, роль, число открытых задач) и `version`.
+Служебные: `doctor` (сервер, источник токена, роль, число открытых задач) и `version`
+(`git describe --tags --always` на момент сборки через `cli/build.sh`, без git и при
+запуске исходника — `dev`). Вывод по умолчанию — JSON-конверт с отступом 2.
 Дата — `YYYY-MM-DD`, `today`, `tomorrow`, `+3d`, `+2w`. Общие флаги: `--human`, `--json`,
 `--host <url>`, `--local`.
 

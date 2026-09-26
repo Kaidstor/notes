@@ -11,8 +11,8 @@
     "build:server": "bun build src/server/index.ts --target bun --minify --outfile dist/server.js",
     "start": "bun src/server/index.ts",
     "seed": "bun scripts/seed.ts",
-    "build:cli": "bun build cli/notes-kai.ts --compile --minify --outfile dist/notes-kai",
-    "install:cli": "bun build cli/notes-kai.ts --compile --minify --outfile ~/.local/bin/notes-kai"
+    "build:cli": "sh cli/build.sh dist/notes-kai",
+    "install:cli": "sh cli/build.sh \"$HOME/.local/bin/notes-kai\""
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

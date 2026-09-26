@@ -10,7 +10,9 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 
-const VERSION = '0.2.0';
+// Подставляет `bun build --define` в cli/build.sh; при запуске исходника идентификатора нет.
+declare const NOTES_KAI_VERSION: string | undefined;
+const VERSION = typeof NOTES_KAI_VERSION === 'string' ? NOTES_KAI_VERSION : 'dev';
 const TAG = 'agent:schedule';
 const DEFAULT_HOST = 'https://notes.kaidstor.ru';
 const LOCAL_HOST = 'http://localhost:3000';
@@ -96,14 +98,14 @@ function result(code: number, data: unknown, print: () => void): never {
     for (const w of warnings) console.error(`warn: ${w}`);
     print();
   } else {
-    console.log(JSON.stringify({ v: 1, command, exit: code, data, warning: warnings.length ? warnings : undefined, error: null }));
+    console.log(JSON.stringify({ v: 1, command, exit: code, data, warning: warnings.length ? warnings : undefined, error: null }, null, 2));
   }
   process.exit(code);
 }
 
 function failure(error: CliError): never {
   if (human) console.error(`ошибка: ${error.message}`);
-  else console.log(JSON.stringify({ v: 1, command, exit: error.code, data: null, error: { kind: error.kind, message: error.message } }));
+  else console.log(JSON.stringify({ v: 1, command, exit: error.code, data: null, error: { kind: error.kind, message: error.message } }, null, 2));
   process.exit(error.code);
 }
 
