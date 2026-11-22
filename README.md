@@ -14,7 +14,7 @@
 `.claude/skills/deploy-notes` (changelog → сборка → `./deploy.sh` → проверка → коммит).
 
 Скилл публикации заметок нужен из любого проекта, поэтому он глобальный, но живёт здесь:
-`~/.claude/skills/html-note` — симлинк на `skills/html-note`, копии нет.
+`~/.claude/skills/note` — симлинк на `skills/note`, копии нет.
 
 ## Локально
 
@@ -207,9 +207,9 @@ docker-образ, внутри которого лежит один `dist`: б�
 (`exposedByDefault: false`, сеть `vpn`). Общий `/app/traefik/dynamic.yml`, от которого
 зависят остальные сайты, деплой не редактирует.
 
-## Скилл html-note
+## Скилл note
 
-В репозитории есть скилл `html-note` ([skills/html-note/SKILL.md](skills/html-note/SKILL.md))
+В репозитории есть скилл `note` ([skills/note/SKILL.md](skills/note/SKILL.md))
 по спецификации [Agent Skills](https://agentskills.io) — инструкции агенту, как публиковать
 markdown на этот сервис: сборка заметки, теги, `--pin` для обновляемых страниц, чтение
 опубликованного через `notes-kai get`. Всё, что скилл делает с сервисом, идёт через CLI
@@ -218,13 +218,13 @@ markdown на этот сервис: сборка заметки, теги, `--p
 Установка (CLI сам спросит, в какого агента и куда — в проект или глобально):
 
 ```bash
-npx skills add https://github.com/Kaidstor/notes --skill html-note
+npx skills add https://github.com/Kaidstor/notes --skill note
 ```
 
 Или руками — скилл это просто папка:
 
 ```bash
-cp -R skills/html-note ~/.claude/skills/
+cp -R skills/note ~/.claude/skills/
 ```
 
 ### Настройка
